@@ -4,3 +4,6 @@ python-Levenshtein
 phonenumbers
 streamlit
 openpyxl
+fastapi
+uvicorn
+python-multipart

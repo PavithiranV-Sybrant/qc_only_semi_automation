@@ -1,9 +1,9 @@
 import streamlit as st
 
-from ui.file_handler    import load_file, render_preview, render_download
-from ui.column_mapper   import render_column_mapper
-from ui.pipeline_runner  import render_pipeline_controls, run_pipeline, render_results_summary, render_elapsed, render_step_timings
-from ui.pipeline_analysis import render_pipeline_analysis
+from ui_old.file_handler    import load_file, render_preview, render_download
+from ui_old.column_mapper   import render_column_mapper
+from ui_old.pipeline_runner  import render_pipeline_controls, run_pipeline, render_results_summary, render_elapsed, render_step_timings
+from ui_old.pipeline_analysis import render_pipeline_analysis
 
 # ---------------------------------------------------------------------------
 # Page config
