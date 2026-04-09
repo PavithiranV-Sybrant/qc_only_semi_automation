@@ -39,8 +39,8 @@ export default function FileUpload({ onUpload, loading, uploadProgress }) {
         }
       </div>
 
-      {/* Upload progress bar */}
-      {showProgress && (
+      {/* Upload progress bar (0–99%) */}
+      {showProgress && uploadProgress < 100 && (
         <div className="mt-2">
           <div className="flex justify-between text-xs text-violet-600 mb-1">
             <span>Uploading file...</span>
@@ -55,10 +55,18 @@ export default function FileUpload({ onUpload, loading, uploadProgress }) {
         </div>
       )}
 
-      {/* Parsing indicator (upload done but server still processing) */}
+      {/* Parsing state (upload done, server processing) */}
       {loading && uploadProgress === 100 && (
-        <div className="mt-2 text-xs text-gray-500 text-center animate-pulse">
-          Parsing file...
+        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="w-3.5 h-3.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin shrink-0" />
+            <span className="text-xs font-medium text-amber-700">Parsing file on server...</span>
+          </div>
+          {/* Indeterminate sliding bar */}
+          <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
+            <div className="h-full bg-amber-400 rounded-full w-1/3 animate-[slide_1.2s_ease-in-out_infinite]" />
+          </div>
+          <p className="text-xs text-amber-600 mt-1">Reading data and computing statistics — please wait.</p>
         </div>
       )}
     </div>
