@@ -1,7 +1,9 @@
 import pandas as pd
 import re
 
-_PATTERN = re.compile(r"^[A-Za-z.]+$")
+# Allow ASCII letters, dots, hyphens, apostrophes only.
+# Accented/Unicode letters (é, ñ, etc.) are intentionally flagged.
+_PATTERN = re.compile(r"^[A-Za-z.\-']+$", re.ASCII)
 
 
 def check_name_non_alphabetic_content(

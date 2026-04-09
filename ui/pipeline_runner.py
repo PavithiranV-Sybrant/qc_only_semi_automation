@@ -61,7 +61,15 @@ def render_pipeline_controls():
     """Renders step toggles and threshold sliders. Call inside sidebar."""
     defaults, threshold_defaults = _load_defaults()
 
-    st.markdown("**Steps**")
+    _c1, _c2 = st.columns([3, 1])
+    _c1.markdown("**Steps**")
+    _all_on = _c2.toggle("All", key="tog_all_steps", value=True)
+    _prev_all = st.session_state.get("_all_steps_prev")
+    if _prev_all is not None and _prev_all != _all_on:
+        for key in STEP_LABELS:
+            st.session_state[f"tog_{key}"] = _all_on
+    st.session_state["_all_steps_prev"] = _all_on
+
     toggles = {}
     for key, label in STEP_LABELS.items():
         toggles[key] = st.toggle(label, value=defaults.get(key, True), key=f"tog_{key}")
