@@ -23,15 +23,15 @@ def download(session_id: str):
     new_cols        = set(df.columns) - original_cols
 
     buf = io.BytesIO()
-    with openpyxl.Workbook() as wb:
-        ws = wb.active
-        ws.append(list(df.columns))
-        for cell in ws[1]:
-            if cell.value in new_cols:
-                cell.fill = _PURPLE
-        for row in df.itertuples(index=False, name=None):
-            ws.append(list(row))
-        wb.save(buf)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(list(df.columns))
+    for cell in ws[1]:
+        if cell.value in new_cols:
+            cell.fill = _PURPLE
+    for row in df.itertuples(index=False, name=None):
+        ws.append([None if (isinstance(v, float) and (v != v)) else v for v in row])
+    wb.save(buf)
 
     buf.seek(0)
     fname = sess.get("file_name", "output").rsplit(".", 1)[0]
