@@ -136,10 +136,9 @@ export default function App() {
     <div className="flex h-screen bg-gray-50 overflow-hidden">
 
       {/* Sidebar */}
-      <aside className="w-72 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+      <aside className="w-96 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
         <div className="px-4 py-4 border-b border-gray-200">
           <h1 className="text-lg font-bold text-violet-700">QC Automation</h1>
-          <p className="text-xs text-gray-400">Contact data validation pipeline</p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
