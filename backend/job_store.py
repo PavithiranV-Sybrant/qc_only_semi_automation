@@ -11,7 +11,7 @@ _jobs: Dict[str, Dict[str, Any]] = {}
 def create_job(session_id: str) -> str:
     jid = str(uuid.uuid4())
     _jobs[jid] = {
-        "status":       "pending",   # pending | running | done | error
+        "status":       "pending",   # pending | running | preparing_download | done | error | cancelled
         "session_id":   session_id,
         "step_index":   0,
         "total_steps":  0,
@@ -22,6 +22,7 @@ def create_job(session_id: str) -> str:
         "distributions": None,
         "elapsed_total": 0.0,
         "error":        None,
+        "cancelled":    False,
     }
     return jid
 

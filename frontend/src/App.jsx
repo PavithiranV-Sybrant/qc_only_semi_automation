@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { uploadFile, startPipeline, pollJobStatus } from './api'
+import { uploadFile, startPipeline, pollJobStatus, cancelPipeline } from './api'
 import FileUpload       from './components/FileUpload'
 import ColumnMapper     from './components/ColumnMapper'
 import PipelineControls from './components/PipelineControls'
@@ -92,6 +92,27 @@ export default function App() {
     }
   }
 
+  function handleReset() {
+    if (pollRef.current) clearInterval(pollRef.current)
+    setSessionId(null); setFileInfo(null); setPreviewRows([]); setDataQuality([])
+    setColumnMapping(null); setPipelineData(null); setJobProgress(null)
+    setJobId(null); setDownloadReady(false); setPreparingDl(false)
+    setUploading(false); setUploadProgress(null); setLargeFile(false); setError(null)
+    setActiveTab('preview')
+  }
+
+  async function handleCancelPipeline() {
+    if (!jobId) return
+    try {
+      await cancelPipeline(jobId)
+      clearInterval(pollRef.current)
+      setJobId(null)
+      setJobProgress(prev => ({ ...prev, status: 'cancelled', current_step: 'Cancelled by user.' }))
+    } catch {
+      setError('Failed to cancel pipeline.')
+    }
+  }
+
   async function handleRun(toggles, thresholds) {
     if (!columnMapping) return
     setError(null)
@@ -126,9 +147,15 @@ export default function App() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Upload File</p>
             <FileUpload onUpload={handleUpload} loading={uploading} uploadProgress={uploadProgress} />
             {fileInfo && !uploading && (
-              <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5">
-                <span className="font-medium text-gray-700">{fileInfo.file_name}</span>
-                <span className="ml-1">— {fileInfo.rows?.toLocaleString()} rows × {fileInfo.columns} cols</span>
+              <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5 flex items-center justify-between">
+                <div className="truncate">
+                  <span className="font-medium text-gray-700">{fileInfo.file_name}</span>
+                  <span className="ml-1">— {fileInfo.rows?.toLocaleString()} rows × {fileInfo.columns} cols</span>
+                </div>
+                <button onClick={handleReset} title="Clear and start over"
+                  className="ml-2 shrink-0 text-gray-400 hover:text-red-500 transition-colors text-base leading-none">
+                  ✕
+                </button>
               </div>
             )}
             {largeFile && (
@@ -178,16 +205,29 @@ export default function App() {
         {/* Pipeline progress bar */}
         {isRunning && jobProgress && (
           <div className="bg-violet-50 border-b border-violet-100 px-6 py-3">
-            <div className="flex justify-between text-xs text-violet-700 mb-1.5">
-              <span className="font-medium">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-xs font-medium text-violet-700">
                 {jobProgress.status === 'preparing_download' ? '📦 Preparing download file...' : `⏳ ${jobProgress.current_step}`}
               </span>
-              <span>{jobProgress.step_index} / {jobProgress.total_steps} steps</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-violet-500">{jobProgress.step_index} / {jobProgress.total_steps} steps</span>
+                <button onClick={handleCancelPipeline}
+                  className="text-xs bg-red-500 hover:bg-red-600 text-white px-2.5 py-1 rounded transition-colors font-medium">
+                  ✕ Cancel
+                </button>
+              </div>
             </div>
             <div className="h-2 bg-violet-100 rounded-full overflow-hidden">
               <div className="h-full bg-violet-600 rounded-full transition-all duration-500"
                 style={{ width: `${progressPct}%` }} />
             </div>
+          </div>
+        )}
+
+        {/* Cancelled notice */}
+        {jobProgress?.status === 'cancelled' && (
+          <div className="bg-red-50 border-b border-red-100 px-6 py-2 text-xs text-red-600 flex items-center gap-2">
+            ✕ Pipeline cancelled. You can re-run with different settings or upload a new file.
           </div>
         )}
 

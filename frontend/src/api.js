@@ -33,6 +33,11 @@ export async function pollJobStatus(jobId) {
   return data
 }
 
+export async function cancelPipeline(jobId) {
+  const { data } = await axios.post(`/api/cancel-pipeline/${jobId}`)
+  return data
+}
+
 export function downloadUrl(sessionId) {
   return `/api/download/${sessionId}`
 }

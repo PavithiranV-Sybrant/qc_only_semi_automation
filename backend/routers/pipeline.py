@@ -54,11 +54,19 @@ def _run_pipeline_task(job_id: str, req: RunRequest):
         })
 
     try:
+        def cancel_check():
+            return get_job(job_id).get("cancelled", False)
+
         df = sess["df_original"].copy()
         df_out, results, elapsed = execute_pipeline(
             df, req.column_mapping, req.step_toggles, req.thresholds,
             progress_cb=progress_cb,
+            cancel_check=cancel_check,
         )
+
+        if cancel_check():
+            update_job(job_id, {"status": "cancelled", "current_step": "Cancelled by user."})
+            return
 
         original_cols = sess["original_columns"]
         new_cols      = [c for c in df_out.columns if c not in set(original_cols)]
@@ -118,3 +126,13 @@ def pipeline_status(job_id: str):
     if not job:
         raise HTTPException(404, "Job not found.")
     return job
+
+
+@router.post("/cancel-pipeline/{job_id}")
+def cancel_pipeline(job_id: str):
+    """Signal the running pipeline to stop after the current step."""
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found.")
+    update_job(job_id, {"cancelled": True, "status": "cancelled", "current_step": "Cancelling..."})
+    return {"status": "cancelling"}
