@@ -6,6 +6,7 @@ import PipelineControls from './components/PipelineControls'
 import DataPreview      from './components/DataPreview'
 import PipelineResults  from './components/PipelineResults'
 import PipelineAnalysis from './components/PipelineAnalysis'
+import InfoPanel        from './components/InfoPanel'
 import './index.css'
 
 const TABS = [
@@ -58,6 +59,9 @@ export default function App() {
   // Responsive: mobile sidebar drawer
   const [isMobile, setIsMobile]       = useState(() => window.innerWidth < 768)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Info panel
+  const [infoOpen, setInfoOpen] = useState(false)
 
   useEffect(() => {
     function handleResize() {
@@ -253,11 +257,17 @@ export default function App() {
           )}
           {TABS.map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} disabled={!fileInfo}
-              className={`px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40
+              className={`px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40 whitespace-nowrap
                 ${activeTab === t.id ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
               {t.label}
             </button>
           ))}
+          <div className="ml-auto shrink-0 pl-2">
+            <button onClick={() => setInfoOpen(true)} title="Pipeline documentation"
+              className="w-8 h-8 flex items-center justify-center rounded-full border-2 border-violet-300 text-violet-600 hover:bg-violet-50 hover:border-violet-500 transition-colors font-bold text-sm">
+              i
+            </button>
+          </div>
         </div>
 
         {/* Pipeline progress bar */}
@@ -317,6 +327,8 @@ export default function App() {
           )}
         </div>
       </main>
+
+      <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} />
     </div>
   )
 }
