@@ -10,6 +10,7 @@ _CONFIG_PATH   = _BASE / "instructions" / "runner_config.json"
 
 # Logical column roles (ordered for display)
 LOGICAL_ROLES = [
+    ("full_name",        "Full Name (to split)"),
     ("first_name",       "First Name"),
     ("middle_name",      "Middle Name"),
     ("last_name",        "Last Name"),

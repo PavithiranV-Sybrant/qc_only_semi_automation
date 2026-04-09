@@ -4,6 +4,7 @@
     "sheet_name": null,
 
     "columns": {
+        "full_name":        "",
         "first_name":       "First Name",
         "middle_name":      "Middle Name(s)",
         "last_name":        "Last Name",
@@ -24,6 +25,7 @@
     },
 
     "steps": {
+        "name_split":                false,
         "dot_remove":                true,
         "name_company_match":        true,
         "non_alpha_name_handle":     true,

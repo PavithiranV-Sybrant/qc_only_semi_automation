@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from functions_qc.name_handling.name_split                         import split_full_name
 from functions_qc.name_handling.dot_remove                         import remove_dot_from_names
 from functions_qc.name_handling.name_company_match                 import check_company_name_direct_match
 from functions_qc.name_handling.non_alpha_name_handle              import check_name_non_alphabetic_content
@@ -23,6 +24,7 @@ _BASE        = Path(__file__).parent.parent
 _CONFIG_PATH = _BASE / "instructions" / "runner_config.json"
 
 STEP_LABELS = {
+    "name_split":                "0. Split full name into parts",
     "dot_remove":                "1. Remove dots from names",
     "name_company_match":        "2. Name / Company match",
     "non_alpha_name_handle":     "3. Non-alpha characters in names",
@@ -84,6 +86,7 @@ def render_pipeline_controls():
 
 def _build_steps(df, cols, toggles, thresholds):
     """Return ordered list of step dicts."""
+    fln = cols.get("full_name")
     fn  = cols.get("first_name")
     mn  = cols.get("middle_name")
     ln  = cols.get("last_name")
@@ -100,6 +103,12 @@ def _build_steps(df, cols, toggles, thresholds):
     def has(*c): return all(x and x in df.columns for x in c)
 
     steps = []
+
+    # 0
+    if toggles.get("name_split", False) and has(fln):
+        steps.append({"name": "name_split", "label": STEP_LABELS["name_split"],
+                      "func": split_full_name,
+                      "kwargs": {"full_name_col": fln}})
 
     # 1
     if toggles.get("dot_remove", True) and has(fn, ln):
