@@ -14,6 +14,25 @@ Install from `requirements.txt`:
 pip install -r requirements.txt
 ```
 
+## Git Workflow
+
+After every change (feature, fix, or config update), commit and push to GitHub:
+
+```bash
+git add <changed files>
+git commit -m "short description of what changed"
+git push
+```
+
+Remote: `https://github.com/PavithiranV-Sybrant/QC_Automation_App`  
+Branch: `master`
+
+Use semantic versioning tags for significant releases:
+```bash
+git tag v1.0.0 -m "release description"
+git push origin v1.0.0
+```
+
 ## Off-Limits
 
 - `isolated_folder_don't_open/` — never read, modify, or reference anything in this folder.
