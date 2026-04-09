@@ -51,13 +51,6 @@ export default function DataPreview({ fileInfo, previewRows, dataQuality }) {
   const exploreNull    = (previewRows?.length || 0) - exploreNonNull
   const exploreUnique  = explorerCounts.length
 
-  // Null% bar chart data for Data Quality tab
-  const nullChartData = dataQuality?.slice().sort((a, b) => b.null_pct - a.null_pct).slice(0, 20).map(r => ({
-    name: r.column.length > 16 ? r.column.slice(0, 14) + '…' : r.column,
-    fullName: r.column,
-    value: r.null_pct,
-  })) || []
-
   return (
     <div className="flex flex-col h-full">
       {/* Metrics */}
@@ -126,51 +119,31 @@ export default function DataPreview({ fileInfo, previewRows, dataQuality }) {
 
       {/* ── Data Quality ── */}
       {tab === 'quality' && (
-        <div className="flex gap-4 flex-1 overflow-hidden">
-          {/* Table */}
-          <div className="flex-1 overflow-auto rounded border border-gray-200">
-            <table className="text-xs w-full border-collapse">
-              <thead className="sticky top-0 bg-violet-50">
-                <tr>
-                  {['Column', 'Null %', 'Null Count', 'Unique', 'Samples'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left font-semibold text-violet-800 border-b border-gray-200">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {dataQuality?.map((row, i) => (
-                  <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-3 py-1.5 border-b border-gray-100 font-medium text-gray-700">{row.column}</td>
-                    <td className="px-3 py-1.5 border-b border-gray-100">
-                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${nullColor(row.null_pct)}`}>
-                        {row.null_pct}%
-                      </span>
-                    </td>
-                    <td className="px-3 py-1.5 border-b border-gray-100 text-gray-500">{row.null_count}</td>
-                    <td className="px-3 py-1.5 border-b border-gray-100 text-gray-500">{row.unique}</td>
-                    <td className="px-3 py-1.5 border-b border-gray-100 text-gray-400">{row.samples?.join(', ')}</td>
-                  </tr>
+        <div className="flex-1 overflow-auto rounded border border-gray-200">
+          <table className="text-xs w-full border-collapse">
+            <thead className="sticky top-0 bg-violet-50">
+              <tr>
+                {['Column', 'Null %', 'Null Count', 'Unique', 'Samples'].map(h => (
+                  <th key={h} className="px-3 py-2 text-left font-semibold text-violet-800 border-b border-gray-200">{h}</th>
                 ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Null % bar chart */}
-          <div className="w-72 shrink-0">
-            <p className="text-xs font-semibold text-gray-600 mb-2">Null % by Column (top 20)</p>
-            <ResponsiveContainer width="100%" height={360}>
-              <BarChart data={nullChartData} layout="vertical" margin={{ left: 0, right: 20 }}>
-                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10 }} tickFormatter={v => `${v}%`} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={90} />
-                <Tooltip formatter={(v, _, p) => [`${v}%`, p.payload.fullName]} />
-                <Bar dataKey="value" radius={[0, 3, 3, 0]}>
-                  {nullChartData.map((_, i) => (
-                    <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+              </tr>
+            </thead>
+            <tbody>
+              {dataQuality?.map((row, i) => (
+                <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-1.5 border-b border-gray-100 font-medium text-gray-700">{row.column}</td>
+                  <td className="px-3 py-1.5 border-b border-gray-100">
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${nullColor(row.null_pct)}`}>
+                      {row.null_pct}%
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5 border-b border-gray-100 text-gray-500">{row.null_count}</td>
+                  <td className="px-3 py-1.5 border-b border-gray-100 text-gray-500">{row.unique}</td>
+                  <td className="px-3 py-1.5 border-b border-gray-100 text-gray-400">{row.samples?.join(', ')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
