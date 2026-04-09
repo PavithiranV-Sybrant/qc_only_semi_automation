@@ -144,10 +144,11 @@ def _build_steps(df, cols, toggles, thresholds):
     return steps
 
 
-def execute_pipeline(df, column_mapping, step_toggles, thresholds, progress_cb=None):
+def execute_pipeline(df, column_mapping, step_toggles, thresholds, progress_cb=None, cancel_check=None):
     """
     Run all steps and return (df, results, elapsed_seconds).
     progress_cb(step_index, total_steps, label) is called before each step.
+    cancel_check() returns True if the job has been cancelled.
     """
     steps   = _build_steps(df, column_mapping, step_toggles, thresholds)
     results = []
@@ -155,6 +156,8 @@ def execute_pipeline(df, column_mapping, step_toggles, thresholds, progress_cb=N
     t_start = time.time()
 
     for i, step in enumerate(steps):
+        if cancel_check and cancel_check():
+            return df, results, round(time.time() - t_start, 3)
         label = step["label"]
         if progress_cb:
             progress_cb(i, total, label)

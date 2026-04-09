@@ -1,9 +1,15 @@
 import axios from 'axios'
 
-export async function uploadFile(file) {
+export async function uploadFile(file, onProgress) {
   const form = new FormData()
   form.append('file', file)
-  const { data } = await axios.post('/api/upload', form)
+  const { data } = await axios.post('/api/upload', form, {
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    },
+  })
   return data
 }
 
@@ -24,6 +30,11 @@ export async function startPipeline(sessionId, columnMapping, stepToggles, thres
 
 export async function pollJobStatus(jobId) {
   const { data } = await axios.get(`/api/pipeline-status/${jobId}`)
+  return data
+}
+
+export async function cancelPipeline(jobId) {
+  const { data } = await axios.post(`/api/cancel-pipeline/${jobId}`)
   return data
 }
 

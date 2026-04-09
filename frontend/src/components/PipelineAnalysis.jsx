@@ -16,7 +16,7 @@ export default function PipelineAnalysis({ pipelineData }) {
   return (
     <div className="space-y-6">
       {/* Overview metrics */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-violet-700">{new_columns?.length ?? 0}</div>
           <div className="text-xs text-gray-400">New Columns Added</div>
@@ -38,12 +38,12 @@ export default function PipelineAnalysis({ pipelineData }) {
       {/* Deep dive */}
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-2">Value Distribution Deep Dive</h3>
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           {/* Column selector */}
-          <div className="w-56 border border-gray-200 rounded overflow-y-auto max-h-72">
+          <div className="md:w-56 shrink-0 border border-gray-200 rounded overflow-y-auto max-h-36 md:max-h-72 flex md:flex-col flex-row flex-wrap overflow-x-auto md:overflow-x-hidden">
             {new_columns?.map(col => (
               <div key={col} onClick={() => setSelectedCol(col)}
-                className={`px-3 py-2 text-xs cursor-pointer border-b border-gray-100 truncate
+                className={`px-3 py-2 text-xs cursor-pointer border-b border-gray-100 whitespace-nowrap md:truncate shrink-0 md:shrink
                   ${selectedCol === col ? 'bg-violet-600 text-white' : 'hover:bg-violet-50 text-gray-700'}`}>
                 {col}
               </div>

@@ -2,6 +2,13 @@ import pandas as pd
 import re
 
 
+def _resolve_k_notation(text: str) -> str:
+    """Convert k/K suffix to full number before parsing. e.g. 5k→5000, 1.5k→1500."""
+    def _replace(match):
+        return str(int(float(match.group(1)) * 1000))
+    return re.sub(r'(\d+\.?\d*)\s*[kK]\b', _replace, text)
+
+
 def _extract_numbers(text: str) -> list:
     return [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", str(text))]
 
@@ -37,7 +44,8 @@ def normalize_employee_count(
     def process(raw):
         if pd.isna(raw) or str(raw).strip() == "":
             return None
-        numbers = _extract_numbers(raw)
+        text = _resolve_k_notation(str(raw))
+        numbers = _extract_numbers(text)
         if not numbers:
             return None
         return _map_to_range(max(numbers))

@@ -15,7 +15,7 @@ function fmtTime(s) {
   return `${s.toFixed(2)}s`
 }
 
-export default function PipelineResults({ results, elapsed, sessionId, newColsSummary }) {
+export default function PipelineResults({ results, elapsed, sessionId, newColsSummary, downloadReady }) {
   if (!results?.length) return (
     <div className="text-gray-400 text-sm text-center py-12">
       Run the pipeline to see results here.
@@ -29,7 +29,7 @@ export default function PipelineResults({ results, elapsed, sessionId, newColsSu
   return (
     <div className="space-y-4">
       {/* Summary metrics */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Total Steps', value: results.length, color: 'text-gray-700' },
           { label: 'Completed',   value: ok,             color: 'text-green-600' },
@@ -44,11 +44,19 @@ export default function PipelineResults({ results, elapsed, sessionId, newColsSu
       </div>
 
       {/* Download + elapsed */}
-      <div className="flex items-center gap-3">
-        <a href={downloadUrl(sessionId)} download
-          className="bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">
-          ⬇ Download QC Output
-        </a>
+      <div className="flex flex-wrap items-center gap-3">
+        {downloadReady ? (
+          <a href={downloadUrl(sessionId)} download
+            className="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors flex items-center gap-2">
+            ⬇ Download QC Output
+            <span className="text-xs bg-green-500 px-1.5 py-0.5 rounded">Ready</span>
+          </a>
+        ) : (
+          <div className="flex items-center gap-2 bg-gray-100 text-gray-400 text-sm font-semibold px-5 py-2.5 rounded-lg cursor-not-allowed">
+            <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+            Preparing download...
+          </div>
+        )}
         <span className="text-sm text-gray-400">Pipeline time: <strong className="text-gray-700">{fmtTime(elapsed)}</strong></span>
       </div>
 

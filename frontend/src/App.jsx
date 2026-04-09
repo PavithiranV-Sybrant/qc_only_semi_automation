@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { uploadFile, startPipeline, pollJobStatus } from './api'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { uploadFile, startPipeline, pollJobStatus, cancelPipeline } from './api'
 import FileUpload       from './components/FileUpload'
 import ColumnMapper     from './components/ColumnMapper'
 import PipelineControls from './components/PipelineControls'
@@ -15,37 +15,83 @@ const TABS = [
 ]
 
 export default function App() {
-  const [sessionId,     setSessionId]     = useState(null)
-  const [fileInfo,      setFileInfo]      = useState(null)
-  const [previewRows,   setPreviewRows]   = useState([])
-  const [dataQuality,   setDataQuality]   = useState([])
-  const [columnMapping, setColumnMapping] = useState(null)
-  const [pipelineData,  setPipelineData]  = useState(null)
-  const [activeTab,     setActiveTab]     = useState('preview')
-  const [uploading,     setUploading]     = useState(false)
-  const [largeFile,     setLargeFile]     = useState(false)
-  const [error,         setError]         = useState(null)
+  const [sessionId,      setSessionId]      = useState(null)
+  const [fileInfo,       setFileInfo]       = useState(null)
+  const [previewRows,    setPreviewRows]    = useState([])
+  const [dataQuality,    setDataQuality]    = useState([])
+  const [columnMapping,  setColumnMapping]  = useState(null)
+  const [pipelineData,   setPipelineData]   = useState(null)
+  const [activeTab,      setActiveTab]      = useState('preview')
+  const [uploading,      setUploading]      = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(null)
+  const [largeFile,      setLargeFile]      = useState(false)
+  const [error,          setError]          = useState(null)
 
-  // Job / progress state
-  const [jobId,         setJobId]         = useState(null)
-  const [jobProgress,   setJobProgress]   = useState(null)  // {status, step_index, total_steps, current_step}
-  const pollRef = useRef(null)
+  // Job / pipeline progress
+  const [jobId,        setJobId]        = useState(null)
+  const [jobProgress,  setJobProgress]  = useState(null)
+  const [downloadReady, setDownloadReady] = useState(false)
+  const [preparingDl,  setPreparingDl]  = useState(false)
+  const pollRef    = useRef(null)
 
-  // Start polling when jobId is set
+  // Resizable sidebar (desktop)
+  const [sidebarWidth, setSidebarWidth] = useState(384)
+  const isResizing = useRef(false)
+
+  const onMouseDown = useCallback(() => { isResizing.current = true }, [])
+
+  useEffect(() => {
+    function onMouseMove(e) {
+      if (!isResizing.current) return
+      const newWidth = Math.min(Math.max(e.clientX, 200), 700)
+      setSidebarWidth(newWidth)
+    }
+    function onMouseUp() { isResizing.current = false }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
+
+  // Responsive: mobile sidebar drawer
+  const [isMobile, setIsMobile]       = useState(() => window.innerWidth < 768)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    function handleResize() {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (!mobile) setSidebarOpen(false)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Poll for pipeline status
   useEffect(() => {
     if (!jobId) return
     pollRef.current = setInterval(async () => {
       try {
         const job = await pollJobStatus(jobId)
         setJobProgress(job)
+
+        if (job.status === 'preparing_download') {
+          setPreparingDl(true)
+        }
+
         if (job.status === 'done') {
           clearInterval(pollRef.current)
           setJobId(null)
+          setPreparingDl(false)
+          setDownloadReady(true)
           setPipelineData(job)
           setActiveTab('results')
         } else if (job.status === 'error') {
           clearInterval(pollRef.current)
           setJobId(null)
+          setPreparingDl(false)
           setError(job.error || 'Pipeline failed.')
         }
       } catch {
@@ -58,22 +104,55 @@ export default function App() {
   }, [jobId])
 
   async function handleUpload(file) {
-    setUploading(true); setError(null)
+    setUploading(true)
+    setUploadProgress(0)
+    setError(null)
     try {
-      const data = await uploadFile(file)
+      const data = await uploadFile(file, setUploadProgress)
       setSessionId(data.session_id)
       setFileInfo({ file_name: data.file_name, rows: data.rows, columns: data.columns, column_names: data.column_names })
       setPreviewRows(data.preview_rows)
       setDataQuality(data.data_quality)
       setLargeFile(data.large_file || false)
-      setColumnMapping(null); setPipelineData(null); setJobProgress(null); setActiveTab('preview')
-    } catch (e) { setError(e.response?.data?.detail || 'Upload failed.') }
-    finally { setUploading(false) }
+      setColumnMapping(null)
+      setPipelineData(null)
+      setJobProgress(null)
+      setDownloadReady(false)
+      setActiveTab('preview')
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Upload failed.')
+    } finally {
+      setUploading(false)
+      setUploadProgress(null)
+    }
+  }
+
+  function handleReset() {
+    if (pollRef.current) clearInterval(pollRef.current)
+    setSessionId(null); setFileInfo(null); setPreviewRows([]); setDataQuality([])
+    setColumnMapping(null); setPipelineData(null); setJobProgress(null)
+    setJobId(null); setDownloadReady(false); setPreparingDl(false)
+    setUploading(false); setUploadProgress(null); setLargeFile(false); setError(null)
+    setActiveTab('preview')
+  }
+
+  async function handleCancelPipeline() {
+    if (!jobId) return
+    try {
+      await cancelPipeline(jobId)
+      clearInterval(pollRef.current)
+      setJobId(null)
+      setJobProgress(prev => ({ ...prev, status: 'cancelled', current_step: 'Cancelled by user.' }))
+    } catch {
+      setError('Failed to cancel pipeline.')
+    }
   }
 
   async function handleRun(toggles, thresholds) {
     if (!columnMapping) return
-    setError(null); setJobProgress({ status: 'pending', step_index: 0, total_steps: 0, current_step: 'Starting...' })
+    setError(null)
+    setDownloadReady(false)
+    setJobProgress({ status: 'pending', step_index: 0, total_steps: 0, current_step: 'Starting...' })
     try {
       const { job_id } = await startPipeline(sessionId, columnMapping, toggles, thresholds)
       setJobId(job_id)
@@ -83,7 +162,7 @@ export default function App() {
     }
   }
 
-  const isRunning = !!jobId || jobProgress?.status === 'running' || jobProgress?.status === 'pending'
+  const isRunning  = !!jobId || ['running', 'pending', 'preparing_download'].includes(jobProgress?.status)
   const progressPct = jobProgress?.total_steps > 0
     ? Math.round((jobProgress.step_index / jobProgress.total_steps) * 100)
     : 0
@@ -91,26 +170,41 @@ export default function App() {
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
 
+      {/* Mobile backdrop */}
+      {isMobile && sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-72 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+      <aside
+        style={isMobile ? { width: 300 } : { width: sidebarWidth }}
+        className={`bg-white flex flex-col overflow-hidden ${isMobile
+          ? `fixed inset-y-0 left-0 z-50 shadow-2xl transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+          : 'shrink-0'}`}
+      >
         <div className="px-4 py-4 border-b border-gray-200">
           <h1 className="text-lg font-bold text-violet-700">QC Automation</h1>
-          <p className="text-xs text-gray-400">Contact data validation pipeline</p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
           <section>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Upload File</p>
-            <FileUpload onUpload={handleUpload} loading={uploading} />
-            {fileInfo && (
-              <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5">
-                <span className="font-medium text-gray-700">{fileInfo.file_name}</span>
-                <span className="ml-1">— {fileInfo.rows?.toLocaleString()} rows × {fileInfo.columns} cols</span>
+            <FileUpload onUpload={handleUpload} loading={uploading} uploadProgress={uploadProgress} />
+            {fileInfo && !uploading && (
+              <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5 flex items-center justify-between">
+                <div className="truncate">
+                  <span className="font-medium text-gray-700">{fileInfo.file_name}</span>
+                  <span className="ml-1">— {fileInfo.rows?.toLocaleString()} rows × {fileInfo.columns} cols</span>
+                </div>
+                <button onClick={handleReset} title="Clear and start over"
+                  className="ml-2 shrink-0 text-gray-400 hover:text-red-500 transition-colors text-base leading-none">
+                  ✕
+                </button>
               </div>
             )}
             {largeFile && (
               <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                ⚠️ Large file — pipeline may take several minutes. Progress will be shown live.
+                ⚠️ Large file — pipeline may take several minutes. Progress shown live.
               </div>
             )}
           </section>
@@ -140,9 +234,23 @@ export default function App() {
         )}
       </aside>
 
+      {/* Resize handle (desktop only) */}
+      {!isMobile && (
+        <div onMouseDown={onMouseDown}
+          className="w-1 shrink-0 cursor-col-resize bg-gray-200 hover:bg-violet-400 transition-colors active:bg-violet-600" />
+      )}
+
       {/* Main */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <div className="bg-white border-b border-gray-200 px-6 flex items-center gap-1 h-12 shrink-0">
+      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <div className="bg-white border-b border-gray-200 px-3 md:px-6 flex items-center gap-1 h-12 shrink-0 overflow-x-auto">
+          {isMobile && (
+            <button onClick={() => setSidebarOpen(o => !o)}
+              className="mr-2 p-1.5 rounded hover:bg-gray-100 text-gray-600 shrink-0" title="Open sidebar">
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16"/>
+              </svg>
+            </button>
+          )}
           {TABS.map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} disabled={!fileInfo}
               className={`px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40
@@ -152,12 +260,20 @@ export default function App() {
           ))}
         </div>
 
-        {/* Live progress bar */}
+        {/* Pipeline progress bar */}
         {isRunning && jobProgress && (
-          <div className="bg-violet-50 border-b border-violet-100 px-6 py-3">
-            <div className="flex justify-between text-xs text-violet-700 mb-1.5">
-              <span className="font-medium">⏳ {jobProgress.current_step}</span>
-              <span>{jobProgress.step_index} / {jobProgress.total_steps} steps</span>
+          <div className="bg-violet-50 border-b border-violet-100 px-3 md:px-6 py-3">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-xs font-medium text-violet-700">
+                {jobProgress.status === 'preparing_download' ? '📦 Preparing download file...' : `⏳ ${jobProgress.current_step}`}
+              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-violet-500">{jobProgress.step_index} / {jobProgress.total_steps} steps</span>
+                <button onClick={handleCancelPipeline}
+                  className="text-xs bg-red-500 hover:bg-red-600 text-white px-2.5 py-1 rounded transition-colors font-medium">
+                  ✕ Cancel
+                </button>
+              </div>
             </div>
             <div className="h-2 bg-violet-100 rounded-full overflow-hidden">
               <div className="h-full bg-violet-600 rounded-full transition-all duration-500"
@@ -166,7 +282,24 @@ export default function App() {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto p-6">
+        {/* Cancelled notice */}
+        {jobProgress?.status === 'cancelled' && (
+          <div className="bg-red-50 border-b border-red-100 px-6 py-2 text-xs text-red-600 flex items-center gap-2">
+            ✕ Pipeline cancelled. You can re-run with different settings or upload a new file.
+          </div>
+        )}
+
+        {/* Pre-download loading bar (shown after pipeline, while Excel is being prepared) */}
+        {preparingDl && !downloadReady && (
+          <div className="bg-green-50 border-b border-green-100 px-6 py-2">
+            <div className="flex items-center gap-2 text-xs text-green-700">
+              <div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+              <span>Preparing download file in the background — download will be instant when ready.</span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-auto p-3 md:p-6">
           {!fileInfo ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="text-6xl mb-4">🔍</div>
@@ -178,7 +311,7 @@ export default function App() {
           ) : (
             <>
               {activeTab === 'preview'  && <DataPreview fileInfo={fileInfo} previewRows={previewRows} dataQuality={dataQuality} />}
-              {activeTab === 'results'  && <PipelineResults results={pipelineData?.results} elapsed={pipelineData?.elapsed_total} sessionId={sessionId} newColsSummary={pipelineData?.new_cols_summary} />}
+              {activeTab === 'results'  && <PipelineResults results={pipelineData?.results} elapsed={pipelineData?.elapsed_total} sessionId={sessionId} newColsSummary={pipelineData?.new_cols_summary} downloadReady={downloadReady} />}
               {activeTab === 'analysis' && <PipelineAnalysis pipelineData={pipelineData} />}
             </>
           )}
