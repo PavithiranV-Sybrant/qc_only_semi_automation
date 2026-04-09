@@ -48,15 +48,9 @@ async def upload_file(file: UploadFile = File(...)):
     if ext not in ("xlsx", "csv"):
         raise HTTPException(400, "Only .xlsx and .csv files are supported.")
 
-    # Read in chunks to enforce size limit without loading everything first
-    chunks = []
-    total_bytes = 0
-    async for chunk in file:
-        total_bytes += len(chunk)
-        if total_bytes > MAX_FILE_BYTES:
-            raise HTTPException(413, f"File exceeds the 100 MB limit ({total_bytes // (1024*1024)} MB received).")
-        chunks.append(chunk)
-    content = b"".join(chunks)
+    content = await file.read()
+    if len(content) > MAX_FILE_BYTES:
+        raise HTTPException(413, f"File exceeds the 500 MB limit ({len(content) // (1024*1024)} MB received).")
 
     try:
         if ext == "xlsx":
