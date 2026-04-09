@@ -15,37 +15,48 @@ const TABS = [
 ]
 
 export default function App() {
-  const [sessionId,     setSessionId]     = useState(null)
-  const [fileInfo,      setFileInfo]      = useState(null)
-  const [previewRows,   setPreviewRows]   = useState([])
-  const [dataQuality,   setDataQuality]   = useState([])
-  const [columnMapping, setColumnMapping] = useState(null)
-  const [pipelineData,  setPipelineData]  = useState(null)
-  const [activeTab,     setActiveTab]     = useState('preview')
-  const [uploading,     setUploading]     = useState(false)
-  const [largeFile,     setLargeFile]     = useState(false)
-  const [error,         setError]         = useState(null)
+  const [sessionId,      setSessionId]      = useState(null)
+  const [fileInfo,       setFileInfo]       = useState(null)
+  const [previewRows,    setPreviewRows]    = useState([])
+  const [dataQuality,    setDataQuality]    = useState([])
+  const [columnMapping,  setColumnMapping]  = useState(null)
+  const [pipelineData,   setPipelineData]   = useState(null)
+  const [activeTab,      setActiveTab]      = useState('preview')
+  const [uploading,      setUploading]      = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(null)
+  const [largeFile,      setLargeFile]      = useState(false)
+  const [error,          setError]          = useState(null)
 
-  // Job / progress state
-  const [jobId,         setJobId]         = useState(null)
-  const [jobProgress,   setJobProgress]   = useState(null)  // {status, step_index, total_steps, current_step}
+  // Job / pipeline progress
+  const [jobId,        setJobId]        = useState(null)
+  const [jobProgress,  setJobProgress]  = useState(null)
+  const [downloadReady, setDownloadReady] = useState(false)
+  const [preparingDl,  setPreparingDl]  = useState(false)
   const pollRef = useRef(null)
 
-  // Start polling when jobId is set
+  // Poll for pipeline status
   useEffect(() => {
     if (!jobId) return
     pollRef.current = setInterval(async () => {
       try {
         const job = await pollJobStatus(jobId)
         setJobProgress(job)
+
+        if (job.status === 'preparing_download') {
+          setPreparingDl(true)
+        }
+
         if (job.status === 'done') {
           clearInterval(pollRef.current)
           setJobId(null)
+          setPreparingDl(false)
+          setDownloadReady(true)
           setPipelineData(job)
           setActiveTab('results')
         } else if (job.status === 'error') {
           clearInterval(pollRef.current)
           setJobId(null)
+          setPreparingDl(false)
           setError(job.error || 'Pipeline failed.')
         }
       } catch {
@@ -58,22 +69,34 @@ export default function App() {
   }, [jobId])
 
   async function handleUpload(file) {
-    setUploading(true); setError(null)
+    setUploading(true)
+    setUploadProgress(0)
+    setError(null)
     try {
-      const data = await uploadFile(file)
+      const data = await uploadFile(file, setUploadProgress)
       setSessionId(data.session_id)
       setFileInfo({ file_name: data.file_name, rows: data.rows, columns: data.columns, column_names: data.column_names })
       setPreviewRows(data.preview_rows)
       setDataQuality(data.data_quality)
       setLargeFile(data.large_file || false)
-      setColumnMapping(null); setPipelineData(null); setJobProgress(null); setActiveTab('preview')
-    } catch (e) { setError(e.response?.data?.detail || 'Upload failed.') }
-    finally { setUploading(false) }
+      setColumnMapping(null)
+      setPipelineData(null)
+      setJobProgress(null)
+      setDownloadReady(false)
+      setActiveTab('preview')
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Upload failed.')
+    } finally {
+      setUploading(false)
+      setUploadProgress(null)
+    }
   }
 
   async function handleRun(toggles, thresholds) {
     if (!columnMapping) return
-    setError(null); setJobProgress({ status: 'pending', step_index: 0, total_steps: 0, current_step: 'Starting...' })
+    setError(null)
+    setDownloadReady(false)
+    setJobProgress({ status: 'pending', step_index: 0, total_steps: 0, current_step: 'Starting...' })
     try {
       const { job_id } = await startPipeline(sessionId, columnMapping, toggles, thresholds)
       setJobId(job_id)
@@ -83,7 +106,7 @@ export default function App() {
     }
   }
 
-  const isRunning = !!jobId || jobProgress?.status === 'running' || jobProgress?.status === 'pending'
+  const isRunning  = !!jobId || ['running', 'pending', 'preparing_download'].includes(jobProgress?.status)
   const progressPct = jobProgress?.total_steps > 0
     ? Math.round((jobProgress.step_index / jobProgress.total_steps) * 100)
     : 0
@@ -101,8 +124,8 @@ export default function App() {
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
           <section>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Upload File</p>
-            <FileUpload onUpload={handleUpload} loading={uploading} />
-            {fileInfo && (
+            <FileUpload onUpload={handleUpload} loading={uploading} uploadProgress={uploadProgress} />
+            {fileInfo && !uploading && (
               <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5">
                 <span className="font-medium text-gray-700">{fileInfo.file_name}</span>
                 <span className="ml-1">— {fileInfo.rows?.toLocaleString()} rows × {fileInfo.columns} cols</span>
@@ -110,7 +133,7 @@ export default function App() {
             )}
             {largeFile && (
               <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                ⚠️ Large file — pipeline may take several minutes. Progress will be shown live.
+                ⚠️ Large file — pipeline may take several minutes. Progress shown live.
               </div>
             )}
           </section>
@@ -152,16 +175,28 @@ export default function App() {
           ))}
         </div>
 
-        {/* Live progress bar */}
+        {/* Pipeline progress bar */}
         {isRunning && jobProgress && (
           <div className="bg-violet-50 border-b border-violet-100 px-6 py-3">
             <div className="flex justify-between text-xs text-violet-700 mb-1.5">
-              <span className="font-medium">⏳ {jobProgress.current_step}</span>
+              <span className="font-medium">
+                {jobProgress.status === 'preparing_download' ? '📦 Preparing download file...' : `⏳ ${jobProgress.current_step}`}
+              </span>
               <span>{jobProgress.step_index} / {jobProgress.total_steps} steps</span>
             </div>
             <div className="h-2 bg-violet-100 rounded-full overflow-hidden">
               <div className="h-full bg-violet-600 rounded-full transition-all duration-500"
                 style={{ width: `${progressPct}%` }} />
+            </div>
+          </div>
+        )}
+
+        {/* Pre-download loading bar (shown after pipeline, while Excel is being prepared) */}
+        {preparingDl && !downloadReady && (
+          <div className="bg-green-50 border-b border-green-100 px-6 py-2">
+            <div className="flex items-center gap-2 text-xs text-green-700">
+              <div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+              <span>Preparing download file in the background — download will be instant when ready.</span>
             </div>
           </div>
         )}
@@ -178,7 +213,7 @@ export default function App() {
           ) : (
             <>
               {activeTab === 'preview'  && <DataPreview fileInfo={fileInfo} previewRows={previewRows} dataQuality={dataQuality} />}
-              {activeTab === 'results'  && <PipelineResults results={pipelineData?.results} elapsed={pipelineData?.elapsed_total} sessionId={sessionId} newColsSummary={pipelineData?.new_cols_summary} />}
+              {activeTab === 'results'  && <PipelineResults results={pipelineData?.results} elapsed={pipelineData?.elapsed_total} sessionId={sessionId} newColsSummary={pipelineData?.new_cols_summary} downloadReady={downloadReady} />}
               {activeTab === 'analysis' && <PipelineAnalysis pipelineData={pipelineData} />}
             </>
           )}
