@@ -149,12 +149,13 @@ export default function DataPreview({ fileInfo, previewRows, dataQuality }) {
 
       {/* ── Column Explorer ── */}
       {tab === 'explorer' && (
-        <div className="flex flex-col md:flex-row gap-4 flex-1 overflow-hidden">
-          {/* Column list — horizontal scroll on mobile, vertical on desktop */}
-          <div className="md:w-44 shrink-0 border border-gray-200 rounded flex md:flex-col flex-row overflow-x-auto md:overflow-x-hidden md:overflow-y-auto">
+        <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
+          {/* Column list — always vertical, capped height on small screens */}
+          <div className="lg:w-56 shrink-0 border border-gray-200 rounded overflow-y-auto max-h-36 lg:max-h-none">
             {cols.map(c => (
               <div key={c} onClick={() => { setExploreCol(c); setFilterVals([]) }}
-                className={`px-3 py-1.5 text-xs cursor-pointer border-r md:border-r-0 border-b border-gray-100 whitespace-nowrap md:truncate shrink-0 md:shrink
+                title={c}
+                className={`px-3 py-2 text-xs cursor-pointer border-b border-gray-100 truncate
                   ${exploreCol === c ? 'bg-violet-600 text-white' : 'hover:bg-violet-50 text-gray-700'}`}>
                 {c}
               </div>
