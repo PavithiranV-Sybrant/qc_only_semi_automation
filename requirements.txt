@@ -1,0 +1,6 @@
+pandas
+fuzzywuzzy
+python-Levenshtein
+phonenumbers
+streamlit
+openpyxl

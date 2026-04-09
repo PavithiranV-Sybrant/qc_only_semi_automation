@@ -1,0 +1,20 @@
+{
+    "_comment": "Column mappings for the Manta database template. Overrides the 'columns' and 'sheet_name' sections of runner_config.json.",
+
+    "sheet_name": null,
+
+    "columns": {
+        "first_name":       "first_name",
+        "middle_name":      "middle_name",
+        "last_name":        "last_name",
+        "company":          "company_name",
+        "email":            "professional_email",
+        "phone_columns":    ["business_desk_phone", "business_mobile_phone", "personal_mobile_phone", "office_main_phone"],
+        "office_state":     "office_state",
+        "employee_count":   "employee_count",
+        "linkedin":         "person_linkedin_url",
+        "primary_industry": "trade_name",
+        "job_title":        "job_title",
+        "sic_code":         "sic_code"
+    }
+}

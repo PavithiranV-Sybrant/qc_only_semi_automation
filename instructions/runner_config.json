@@ -1,0 +1,41 @@
+{
+    "_comment": "Map each logical role to the exact column header as it appears in the Excel file. Set any step to false to skip it.",
+
+    "sheet_name": null,
+
+    "columns": {
+        "first_name":       "First Name",
+        "middle_name":      "Middle Name(s)",
+        "last_name":        "Last Name",
+        "company":          "Company Name",
+        "email":            "Professional Email Address",
+        "phone_columns":    ["BusinessDesk/DirectPhone", "Business Mobile Phone", "Consumer/PersonalMobilePhone", "Office Main Phone"],
+        "office_state":     "Office State",
+        "employee_count":   "Employee count",
+        "linkedin":         "Person LinkedIn",
+        "primary_industry": "Trade Name",
+        "job_title":        "Job Title",
+        "sic_code":         "SIC code"
+    },
+
+    "thresholds": {
+        "name_email_fuzzy": 80,
+        "linkedin_fuzzy":   0.5
+    },
+
+    "steps": {
+        "dot_remove":                true,
+        "name_company_match":        true,
+        "non_alpha_name_handle":     true,
+        "email_structure_validation":true,
+        "company_email_domain_match":true,
+        "name_email_fuzzy_match":    true,
+        "normalize_phone_excel":     true,
+        "validate_phone_state":      true,
+        "normalize_employee_count":  true,
+        "name_linkedin_fuzzy_match": true,
+        "extract_primary_industry":  true,
+        "job_title_categories":      true,
+        "sic_code_naics":            true
+    }
+}

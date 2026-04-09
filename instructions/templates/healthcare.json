@@ -1,0 +1,20 @@
+{
+    "_comment": "Column mappings for the Healthcare template (1Healthcare_Template.xlsx). Overrides the 'columns' and 'sheet_name' sections of runner_config.json.",
+
+    "sheet_name": null,
+
+    "columns": {
+        "first_name":       "First Name",
+        "middle_name":      "Middle Name(s)",
+        "last_name":        "Last Name",
+        "company":          "Company Name",
+        "email":            "Professional Email Address",
+        "phone_columns":    ["BusinessDesk/DirectPhone", "Business Mobile Phone", "Consumer/PersonalMobilePhone", "Office Main Phone"],
+        "office_state":     "Office State",
+        "employee_count":   "Employee count",
+        "linkedin":         "Person LinkedIn",
+        "primary_industry": "Trade Name",
+        "job_title":        "Job Title",
+        "sic_code":         "SIC code"
+    }
+}

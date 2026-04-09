@@ -1,0 +1,13 @@
+[
+  "excel_id",
+  "url",
+  "db_id",
+  "name_prefix",
+  "name_suffix",
+  "ddd",
+  "source_name",
+  "source_file",
+  "created_at",
+  "score",
+  "Company set"
+]
