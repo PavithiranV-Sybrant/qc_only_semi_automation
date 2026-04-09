@@ -25,6 +25,7 @@ export default function App() {
   const [uploading,     setUploading]     = useState(false)
   const [running,       setRunning]       = useState(false)
   const [error,         setError]         = useState(null)
+  const [largeFile,     setLargeFile]     = useState(false)
 
   async function handleUpload(file) {
     setUploading(true); setError(null)
@@ -34,6 +35,7 @@ export default function App() {
       setFileInfo({ file_name: data.file_name, rows: data.rows, columns: data.columns, column_names: data.column_names })
       setPreviewRows(data.preview_rows)
       setDataQuality(data.data_quality)
+      setLargeFile(data.large_file || false)
       setColumnMapping(null); setPipelineData(null); setActiveTab('preview')
     } catch (e) { setError(e.response?.data?.detail || 'Upload failed.') }
     finally { setUploading(false) }
@@ -67,6 +69,11 @@ export default function App() {
               <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5">
                 <span className="font-medium text-gray-700">{fileInfo.file_name}</span>
                 <span className="ml-1">— {fileInfo.rows?.toLocaleString()} rows × {fileInfo.columns} cols</span>
+              </div>
+            )}
+            {largeFile && (
+              <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                ⚠️ Large file (&gt;50k rows) — pipeline may take several minutes.
               </div>
             )}
           </section>
