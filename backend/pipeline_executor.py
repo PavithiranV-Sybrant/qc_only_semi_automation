@@ -144,14 +144,21 @@ def _build_steps(df, cols, toggles, thresholds):
     return steps
 
 
-def execute_pipeline(df, column_mapping, step_toggles, thresholds):
-    """Run all steps and return (df, results, elapsed_seconds)."""
+def execute_pipeline(df, column_mapping, step_toggles, thresholds, progress_cb=None):
+    """
+    Run all steps and return (df, results, elapsed_seconds).
+    progress_cb(step_index, total_steps, label) is called before each step.
+    """
     steps   = _build_steps(df, column_mapping, step_toggles, thresholds)
     results = []
+    total   = len(steps)
     t_start = time.time()
 
-    for step in steps:
+    for i, step in enumerate(steps):
         label = step["label"]
+        if progress_cb:
+            progress_cb(i, total, label)
+
         if step.get("deferred"):
             std_col = step["kwargs"].get("area_code_mobile_number_column", "")
             if std_col not in df.columns:
@@ -170,4 +177,6 @@ def execute_pipeline(df, column_mapping, step_toggles, thresholds):
             results.append({"step": step["name"], "label": label, "status": "error",
                             "detail": {"message": str(e)}, "elapsed": round(elapsed, 3)})
 
+    if progress_cb:
+        progress_cb(total, total, "Done")
     return df, results, round(time.time() - t_start, 3)

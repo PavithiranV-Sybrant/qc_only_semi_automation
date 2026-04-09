@@ -12,13 +12,18 @@ export async function getConfig() {
   return data
 }
 
-export async function runPipeline(sessionId, columnMapping, stepToggles, thresholds) {
+export async function startPipeline(sessionId, columnMapping, stepToggles, thresholds) {
   const { data } = await axios.post('/api/run-pipeline', {
     session_id:     sessionId,
     column_mapping: columnMapping,
     step_toggles:   stepToggles,
     thresholds,
   })
+  return data  // { job_id, status }
+}
+
+export async function pollJobStatus(jobId) {
+  const { data } = await axios.get(`/api/pipeline-status/${jobId}`)
   return data
 }
 

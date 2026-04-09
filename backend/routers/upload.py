@@ -12,7 +12,7 @@ from backend.pipeline_executor import load_config, STEP_LABELS
 router = APIRouter()
 
 _TEMPLATES_DIR = Path(__file__).parent.parent.parent / "instructions" / "templates"
-MAX_FILE_BYTES  = 100 * 1024 * 1024   # 100 MB hard limit
+MAX_FILE_BYTES  = 500 * 1024 * 1024   # 500 MB hard limit
 WARN_ROW_COUNT  = 50_000              # warn user if rows exceed this
 
 

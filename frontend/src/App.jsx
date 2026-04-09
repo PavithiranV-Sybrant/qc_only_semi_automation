@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { uploadFile, runPipeline } from './api'
+import { useState, useEffect, useRef } from 'react'
+import { uploadFile, startPipeline, pollJobStatus } from './api'
 import FileUpload       from './components/FileUpload'
 import ColumnMapper     from './components/ColumnMapper'
 import PipelineControls from './components/PipelineControls'
@@ -23,9 +23,39 @@ export default function App() {
   const [pipelineData,  setPipelineData]  = useState(null)
   const [activeTab,     setActiveTab]     = useState('preview')
   const [uploading,     setUploading]     = useState(false)
-  const [running,       setRunning]       = useState(false)
-  const [error,         setError]         = useState(null)
   const [largeFile,     setLargeFile]     = useState(false)
+  const [error,         setError]         = useState(null)
+
+  // Job / progress state
+  const [jobId,         setJobId]         = useState(null)
+  const [jobProgress,   setJobProgress]   = useState(null)  // {status, step_index, total_steps, current_step}
+  const pollRef = useRef(null)
+
+  // Start polling when jobId is set
+  useEffect(() => {
+    if (!jobId) return
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await pollJobStatus(jobId)
+        setJobProgress(job)
+        if (job.status === 'done') {
+          clearInterval(pollRef.current)
+          setJobId(null)
+          setPipelineData(job)
+          setActiveTab('results')
+        } else if (job.status === 'error') {
+          clearInterval(pollRef.current)
+          setJobId(null)
+          setError(job.error || 'Pipeline failed.')
+        }
+      } catch {
+        clearInterval(pollRef.current)
+        setJobId(null)
+        setError('Lost connection to server.')
+      }
+    }, 2000)
+    return () => clearInterval(pollRef.current)
+  }, [jobId])
 
   async function handleUpload(file) {
     setUploading(true); setError(null)
@@ -36,20 +66,27 @@ export default function App() {
       setPreviewRows(data.preview_rows)
       setDataQuality(data.data_quality)
       setLargeFile(data.large_file || false)
-      setColumnMapping(null); setPipelineData(null); setActiveTab('preview')
+      setColumnMapping(null); setPipelineData(null); setJobProgress(null); setActiveTab('preview')
     } catch (e) { setError(e.response?.data?.detail || 'Upload failed.') }
     finally { setUploading(false) }
   }
 
   async function handleRun(toggles, thresholds) {
     if (!columnMapping) return
-    setRunning(true); setError(null)
+    setError(null); setJobProgress({ status: 'pending', step_index: 0, total_steps: 0, current_step: 'Starting...' })
     try {
-      const data = await runPipeline(sessionId, columnMapping, toggles, thresholds)
-      setPipelineData(data); setActiveTab('results')
-    } catch (e) { setError(e.response?.data?.detail || 'Pipeline failed.') }
-    finally { setRunning(false) }
+      const { job_id } = await startPipeline(sessionId, columnMapping, toggles, thresholds)
+      setJobId(job_id)
+    } catch (e) {
+      setJobProgress(null)
+      setError(e.response?.data?.detail || 'Failed to start pipeline.')
+    }
   }
+
+  const isRunning = !!jobId || jobProgress?.status === 'running' || jobProgress?.status === 'pending'
+  const progressPct = jobProgress?.total_steps > 0
+    ? Math.round((jobProgress.step_index / jobProgress.total_steps) * 100)
+    : 0
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -73,7 +110,7 @@ export default function App() {
             )}
             {largeFile && (
               <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                ⚠️ Large file (&gt;50k rows) — pipeline may take several minutes.
+                ⚠️ Large file — pipeline may take several minutes. Progress will be shown live.
               </div>
             )}
           </section>
@@ -91,7 +128,7 @@ export default function App() {
           {fileInfo && (
             <section>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pipeline</p>
-              <PipelineControls onRun={handleRun} loading={running} mappingApplied={!!columnMapping} />
+              <PipelineControls onRun={handleRun} loading={isRunning} mappingApplied={!!columnMapping} />
             </section>
           )}
         </div>
@@ -113,8 +150,21 @@ export default function App() {
               {t.label}
             </button>
           ))}
-          {running && <span className="ml-auto text-xs text-violet-600 animate-pulse">⏳ Running pipeline...</span>}
         </div>
+
+        {/* Live progress bar */}
+        {isRunning && jobProgress && (
+          <div className="bg-violet-50 border-b border-violet-100 px-6 py-3">
+            <div className="flex justify-between text-xs text-violet-700 mb-1.5">
+              <span className="font-medium">⏳ {jobProgress.current_step}</span>
+              <span>{jobProgress.step_index} / {jobProgress.total_steps} steps</span>
+            </div>
+            <div className="h-2 bg-violet-100 rounded-full overflow-hidden">
+              <div className="h-full bg-violet-600 rounded-full transition-all duration-500"
+                style={{ width: `${progressPct}%` }} />
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-auto p-6">
           {!fileInfo ? (
