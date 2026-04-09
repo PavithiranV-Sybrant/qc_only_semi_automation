@@ -5,50 +5,59 @@ echo   QC Automation App - Installation
 echo ================================================
 echo.
 
-:: Check Python is installed
+:: Check Python
 python --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python is not installed or not in PATH.
     echo         Download it from https://www.python.org/downloads/
     echo         Make sure to check "Add Python to PATH" during install.
-    pause
-    exit /b 1
+    pause & exit /b 1
 )
-
 echo [OK] Python found:
 python --version
 echo.
 
-:: Create virtual environment
-echo [1/3] Creating virtual environment...
-python -m venv venv
+:: Check Node.js
+node --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Failed to create virtual environment.
-    pause
-    exit /b 1
+    echo [ERROR] Node.js is not installed or not in PATH.
+    echo         Download it from https://nodejs.org/
+    pause & exit /b 1
 )
+echo [OK] Node.js found:
+node --version
+echo.
+
+:: Python venv
+echo [1/4] Creating Python virtual environment...
+python -m venv venv
+if errorlevel 1 ( echo [ERROR] Failed to create venv. & pause & exit /b 1 )
 echo [OK] Virtual environment created.
 echo.
 
-:: Activate and install dependencies
-echo [2/3] Installing dependencies...
+:: Python dependencies
+echo [2/4] Installing Python dependencies...
 call venv\Scripts\activate
 pip install --upgrade pip -q
 pip install -r requirements.txt
-if errorlevel 1 (
-    echo [ERROR] Failed to install dependencies.
-    pause
-    exit /b 1
-)
-echo [OK] Dependencies installed.
+if errorlevel 1 ( echo [ERROR] Failed to install Python dependencies. & pause & exit /b 1 )
+echo [OK] Python dependencies installed.
 echo.
 
-:: Done
-echo [3/3] Setup complete.
+:: Node dependencies
+echo [3/4] Installing frontend (Node.js) dependencies...
+cd frontend
+npm install
+if errorlevel 1 ( echo [ERROR] Failed to install Node dependencies. & pause & exit /b 1 )
+cd ..
+echo [OK] Frontend dependencies installed.
+echo.
+
+echo [4/4] Setup complete.
 echo.
 echo ================================================
-echo   Installation finished successfully!
-echo   Double-click run_app.bat to launch the app.
+echo   Installation finished!
+echo   Double-click run_app.bat to launch.
 echo ================================================
 echo.
 pause
