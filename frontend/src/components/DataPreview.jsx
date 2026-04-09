@@ -55,7 +55,7 @@ export default function DataPreview({ fileInfo, previewRows, dataQuality }) {
     <div className="flex flex-col h-full">
       {/* Metrics */}
       {fileInfo && (
-        <div className="grid grid-cols-5 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
           {[
             { label: 'Rows',       value: fileInfo.rows?.toLocaleString() },
             { label: 'Columns',    value: fileInfo.columns },
@@ -76,10 +76,10 @@ export default function DataPreview({ fileInfo, previewRows, dataQuality }) {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-3">
+      <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
         {['table', 'quality', 'explorer'].map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-3 py-1 rounded text-sm font-medium capitalize transition-colors
+            className={`px-3 py-1 rounded text-sm font-medium capitalize transition-colors whitespace-nowrap
               ${tab === t ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             {t === 'table' ? 'Table View' : t === 'quality' ? 'Data Quality' : 'Column Explorer'}
           </button>
@@ -149,12 +149,12 @@ export default function DataPreview({ fileInfo, previewRows, dataQuality }) {
 
       {/* ── Column Explorer ── */}
       {tab === 'explorer' && (
-        <div className="flex gap-4 flex-1 overflow-hidden">
-          {/* Column list */}
-          <div className="w-44 shrink-0 overflow-y-auto border border-gray-200 rounded">
+        <div className="flex flex-col md:flex-row gap-4 flex-1 overflow-hidden">
+          {/* Column list — horizontal scroll on mobile, vertical on desktop */}
+          <div className="md:w-44 shrink-0 border border-gray-200 rounded flex md:flex-col flex-row overflow-x-auto md:overflow-x-hidden md:overflow-y-auto">
             {cols.map(c => (
               <div key={c} onClick={() => { setExploreCol(c); setFilterVals([]) }}
-                className={`px-3 py-1.5 text-xs cursor-pointer border-b border-gray-100 truncate
+                className={`px-3 py-1.5 text-xs cursor-pointer border-r md:border-r-0 border-b border-gray-100 whitespace-nowrap md:truncate shrink-0 md:shrink
                   ${exploreCol === c ? 'bg-violet-600 text-white' : 'hover:bg-violet-50 text-gray-700'}`}>
                 {c}
               </div>
@@ -165,7 +165,7 @@ export default function DataPreview({ fileInfo, previewRows, dataQuality }) {
           {exploreCol ? (
             <div className="flex-1 overflow-auto space-y-4">
               {/* Metrics */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
                   { label: 'Non-Null', value: exploreNonNull?.toLocaleString(), color: 'text-green-600' },
                   { label: 'Null',     value: exploreNull?.toLocaleString(),    color: 'text-red-500' },

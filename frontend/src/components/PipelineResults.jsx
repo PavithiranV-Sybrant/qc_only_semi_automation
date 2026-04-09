@@ -29,7 +29,7 @@ export default function PipelineResults({ results, elapsed, sessionId, newColsSu
   return (
     <div className="space-y-4">
       {/* Summary metrics */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Total Steps', value: results.length, color: 'text-gray-700' },
           { label: 'Completed',   value: ok,             color: 'text-green-600' },
@@ -44,7 +44,7 @@ export default function PipelineResults({ results, elapsed, sessionId, newColsSu
       </div>
 
       {/* Download + elapsed */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {downloadReady ? (
           <a href={downloadUrl(sessionId)} download
             className="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors flex items-center gap-2">
