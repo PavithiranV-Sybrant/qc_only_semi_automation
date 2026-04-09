@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { uploadFile, startPipeline, pollJobStatus, cancelPipeline } from './api'
 import FileUpload       from './components/FileUpload'
 import ColumnMapper     from './components/ColumnMapper'
@@ -32,7 +32,28 @@ export default function App() {
   const [jobProgress,  setJobProgress]  = useState(null)
   const [downloadReady, setDownloadReady] = useState(false)
   const [preparingDl,  setPreparingDl]  = useState(false)
-  const pollRef = useRef(null)
+  const pollRef    = useRef(null)
+
+  // Resizable sidebar
+  const [sidebarWidth, setSidebarWidth] = useState(384)
+  const isResizing = useRef(false)
+
+  const onMouseDown = useCallback(() => { isResizing.current = true }, [])
+
+  useEffect(() => {
+    function onMouseMove(e) {
+      if (!isResizing.current) return
+      const newWidth = Math.min(Math.max(e.clientX, 200), 700)
+      setSidebarWidth(newWidth)
+    }
+    function onMouseUp() { isResizing.current = false }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
 
   // Poll for pipeline status
   useEffect(() => {
@@ -136,7 +157,7 @@ export default function App() {
     <div className="flex h-screen bg-gray-50 overflow-hidden">
 
       {/* Sidebar */}
-      <aside className="w-96 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+      <aside style={{ width: sidebarWidth }} className="shrink-0 bg-white flex flex-col overflow-hidden">
         <div className="px-4 py-4 border-b border-gray-200">
           <h1 className="text-lg font-bold text-violet-700">QC Automation</h1>
         </div>
@@ -188,6 +209,10 @@ export default function App() {
           </div>
         )}
       </aside>
+
+      {/* Resize handle */}
+      <div onMouseDown={onMouseDown}
+        className="w-1 shrink-0 cursor-col-resize bg-gray-200 hover:bg-violet-400 transition-colors active:bg-violet-600" />
 
       {/* Main */}
       <main className="flex-1 flex flex-col overflow-hidden">
