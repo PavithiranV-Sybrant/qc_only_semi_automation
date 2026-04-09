@@ -1,10 +1,10 @@
 import io
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
 
 from backend.session_store import create_session, update_session
 from backend.pipeline_executor import load_config, STEP_LABELS
@@ -71,7 +71,14 @@ async def upload_file(file: UploadFile = File(...)):
         "file_name":        name,
     })
 
-    preview = df.head(200).where(pd.notna(df.head(200)), None).values.tolist()
+    def _safe(v):
+        if v is None or v is pd.NA or v is pd.NaT:
+            return None
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return None
+        return v
+
+    preview = [[_safe(v) for v in row] for row in df.head(200).values.tolist()]
 
     return {
         "session_id":   sid,
