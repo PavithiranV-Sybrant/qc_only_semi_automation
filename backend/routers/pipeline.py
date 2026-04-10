@@ -1,5 +1,4 @@
 import io
-import concurrent.futures
 import openpyxl
 from openpyxl.styles import PatternFill
 from fastapi import APIRouter, HTTPException
@@ -10,9 +9,9 @@ from backend.session_store import get_session, update_session
 from backend.job_store import create_job, get_job, update_job
 from backend.pipeline_executor import execute_pipeline
 from backend.file_store import save_file as _persist_file
+from backend import job_queue
 
 router  = APIRouter()
-_pool   = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 _PURPLE = PatternFill(fill_type="solid", fgColor="B19CD9")
 
 
@@ -120,13 +119,30 @@ def _run_pipeline_task(job_id: str, req: RunRequest):
 
 @router.post("/run-pipeline")
 def run_pipeline(req: RunRequest):
-    """Start pipeline in background. Returns job_id immediately."""
+    """Enqueue pipeline job. Returns job_id immediately; runs when worker is free."""
     sess = get_session(req.session_id)
     if not sess:
         raise HTTPException(404, "Session not found. Please re-upload the file.")
     job_id = create_job(req.session_id, file_name=sess.get("file_name", ""))
-    _pool.submit(_run_pipeline_task, job_id, req)
-    return {"job_id": job_id, "status": "started"}
+
+    def task():
+        job_queue.mark_running(job_id)
+        try:
+            _run_pipeline_task(job_id, req)
+        finally:
+            final = get_job(job_id)
+            if final:
+                s = final.get("status", "")
+                if s == "error":
+                    job_queue.mark_error(job_id, final.get("error", ""))
+                elif s == "cancelled":
+                    job_queue.mark_cancelled(job_id)
+                else:
+                    job_queue.mark_done(job_id)
+
+    job_queue.enqueue(task, {"id": job_id, "type": "single",
+                              "label": sess.get("file_name", "file")})
+    return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/pipeline-status/{job_id}")

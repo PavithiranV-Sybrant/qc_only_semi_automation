@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   getBackgroundJobs, dismissSingleJob, dismissBatchJob,
-  storedFileDownloadUrl, batchDownloadAllUrl,
+  storedFileDownloadUrl, batchDownloadAllUrl, getQueue,
 } from '../api'
+import NewJobPanel from './NewJobPanel'
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 
@@ -243,11 +244,46 @@ function BatchSection({ batches, onDismiss }) {
   )
 }
 
+// ─── Queue Status Section ─────────────────────────────────────────────────
+
+function QueueSection({ items }) {
+  const active = items.filter(i => ['queued', 'running'].includes(i.status))
+  if (active.length === 0) return null
+
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
+        Queue
+        <span className="font-normal normal-case text-gray-400">— {active.length} waiting</span>
+      </h2>
+      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+        {active.map((item, idx) => (
+          <div key={item.id} className="flex items-center gap-3 px-5 py-3">
+            <span className="text-xs font-bold text-gray-400 w-5 shrink-0 text-center">
+              {item.status === 'running' ? '▶' : idx + 1}
+            </span>
+            <span className="text-sm shrink-0">{item.type === 'batch' ? '📂' : '📄'}</span>
+            <p className="flex-1 text-sm text-gray-700 truncate">{item.label}</p>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0
+              ${item.status === 'running'
+                ? 'bg-violet-100 text-violet-700'
+                : 'bg-amber-100 text-amber-700'}`}>
+              {item.status === 'running' ? 'Running' : 'Waiting'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────
 
 export default function BackgroundJobs({ onBack }) {
-  const [jobs,    setJobs]    = useState({ single: [], batch: [] })
-  const [loading, setLoading] = useState(true)
+  const [jobs,       setJobs]       = useState({ single: [], batch: [] })
+  const [queue,      setQueue]      = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [panelOpen,  setPanelOpen]  = useState(false)
   const pollRef = useRef(null)
 
   const hasActive = useCallback((data) => {
@@ -262,8 +298,9 @@ export default function BackgroundJobs({ onBack }) {
 
   const loadJobs = useCallback(async () => {
     try {
-      const data = await getBackgroundJobs()
+      const [data, qData] = await Promise.all([getBackgroundJobs(), getQueue()])
       setJobs(data)
+      setQueue(qData)
       setLoading(false)
     } catch {
       setLoading(false)
@@ -309,6 +346,12 @@ export default function BackgroundJobs({ onBack }) {
   return (
     <div className="min-h-screen bg-gray-50">
 
+      <NewJobPanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        onSubmitted={() => { setTimeout(loadJobs, 500) }}
+      />
+
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-3">
@@ -324,16 +367,27 @@ export default function BackgroundJobs({ onBack }) {
               Processing
             </span>
           )}
-          {anyCompleted && (
-            <button onClick={handleDismissAllDone}
-              className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition-colors">
-              Dismiss all completed
+          <div className="ml-auto flex items-center gap-3">
+            {anyCompleted && (
+              <button onClick={handleDismissAllDone}
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                Dismiss all completed
+              </button>
+            )}
+            <button
+              onClick={() => setPanelOpen(true)}
+              className="flex items-center gap-1.5 text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white px-3.5 py-1.5 rounded-lg transition-colors"
+              title="Add a new job">
+              + New Job
             </button>
-          )}
+          </div>
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-10">
+
+        {/* Queue status — always shown when items are waiting */}
+        <QueueSection items={queue} />
 
         {loading ? (
           <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Loading…</div>
@@ -342,8 +396,8 @@ export default function BackgroundJobs({ onBack }) {
             <div className="text-5xl mb-4">⏳</div>
             <h2 className="text-xl font-semibold text-gray-700 mb-2">No background jobs</h2>
             <p className="text-gray-400 text-sm max-w-sm">
-              Jobs appear here when you run a pipeline from Single File or Batch Processing.
-              They continue running even if you navigate away.
+              Click <strong>+ New Job</strong> to add a single file or batch job to the queue.
+              Jobs continue running even if you navigate away.
             </p>
           </div>
         ) : (

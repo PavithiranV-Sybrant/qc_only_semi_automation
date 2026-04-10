@@ -1,7 +1,6 @@
 import io
 import uuid
 import zipfile
-import concurrent.futures
 import openpyxl
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,9 +14,9 @@ from pydantic import BaseModel
 from backend.session_store import create_session, update_session, get_session
 from backend.pipeline_executor import execute_pipeline
 from backend.file_store import save_file as _persist_file, get_file as _get_stored_file
+from backend import job_queue
 
 router = APIRouter()
-_pool   = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 _PURPLE = openpyxl.styles.PatternFill(fill_type="solid", fgColor="B19CD9")
 
 # batch_id → { files: [...], status, cancelled, started_at, name }
@@ -222,9 +221,23 @@ def run_batch(req: BatchRunRequest):
         f["current_step"]    = ""
         f["download_ready"]  = False
         f["storage_file_id"] = None
-        _pool.submit(_run_file, req.batch_id, f["session_id"], req)
 
-    return {"status": "started", "file_count": len(batch["files"])}
+    def task():
+        job_queue.mark_running(req.batch_id)
+        for f in batch["files"]:
+            if batch.get("cancelled"):
+                if f["status"] == "pending":
+                    f["status"] = "cancelled"
+                continue
+            _run_file(req.batch_id, f["session_id"], req)  # blocking — serial execution
+        _check_batch_done(req.batch_id)
+        if batch.get("cancelled"):
+            job_queue.mark_cancelled(req.batch_id)
+        else:
+            job_queue.mark_done(req.batch_id)
+
+    job_queue.enqueue(task, {"id": req.batch_id, "type": "batch", "label": batch["name"]})
+    return {"status": "queued", "file_count": len(batch["files"])}
 
 
 @router.get("/batch/status/{batch_id}")

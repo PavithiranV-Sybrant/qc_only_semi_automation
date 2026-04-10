@@ -128,6 +128,13 @@ export function storedFileDownloadUrl(fileId) {
   return `/api/storage/download/${fileId}`
 }
 
+// ── Queue ──────────────────────────────────────────────────────────────────
+
+export async function getQueue() {
+  const { data } = await axios.get('/api/queue')
+  return data
+}
+
 // ── Background Jobs ────────────────────────────────────────────────────────
 
 export async function getBackgroundJobs() {

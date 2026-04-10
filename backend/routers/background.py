@@ -1,8 +1,15 @@
 from fastapi import APIRouter, HTTPException
 
 from backend.job_store import list_jobs, dismiss_job
+from backend import job_queue
 
 router = APIRouter()
+
+
+@router.get("/queue")
+def get_queue():
+    """Return the global job queue state (all entries, newest-last)."""
+    return job_queue.list_queue()
 
 
 @router.get("/background-jobs")
