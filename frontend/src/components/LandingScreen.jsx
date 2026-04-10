@@ -14,6 +14,13 @@ const MODES = [
     badge: 'Multi-file',
   },
   {
+    id:    'background',
+    icon:  '⏳',
+    title: 'Background Jobs',
+    desc:  'Monitor live pipeline progress. Jobs keep running even after you close this page — reconnect any time.',
+    badge: 'Live',
+  },
+  {
     id:    'templates',
     icon:  '🗂️',
     title: 'Template Manager',
@@ -53,7 +60,7 @@ export default function LandingScreen({ onSelect }) {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 w-full max-w-5xl">
           {MODES.map(m => (
             <button
               key={m.id}

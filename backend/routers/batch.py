@@ -1,8 +1,10 @@
 import io
 import uuid
+import zipfile
 import concurrent.futures
 import openpyxl
-from openpyxl.styles import PatternFill
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -12,13 +14,13 @@ from pydantic import BaseModel
 
 from backend.session_store import create_session, update_session, get_session
 from backend.pipeline_executor import execute_pipeline
-from backend.file_store import save_file as _persist_file
+from backend.file_store import save_file as _persist_file, get_file as _get_stored_file
 
 router = APIRouter()
 _pool   = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-_PURPLE = PatternFill(fill_type="solid", fgColor="B19CD9")
+_PURPLE = openpyxl.styles.PatternFill(fill_type="solid", fgColor="B19CD9")
 
-# batch_id → { files: [...], status, cancelled }
+# batch_id → { files: [...], status, cancelled, started_at, name }
 _batch_store: dict[str, dict] = {}
 
 
@@ -44,6 +46,21 @@ def _generate_excel(df: pd.DataFrame, original_cols: list) -> bytes:
         ws.append([None if (isinstance(v, float) and v != v) else v for v in row])
     wb.save(buf)
     return buf.getvalue()
+
+
+# ─── public store accessors (used by background router) ──────────────────────
+
+def list_batches() -> list:
+    """Return all batches sorted newest-first."""
+    batches = [{"id": bid, **b} for bid, b in _batch_store.items()]
+    return sorted(batches, key=lambda b: b.get("started_at") or "", reverse=True)
+
+
+def dismiss_batch(bid: str) -> bool:
+    if bid in _batch_store:
+        del _batch_store[bid]
+        return True
+    return False
 
 
 # ─── models ─────────────────────────────────────────────────────────────────
@@ -97,16 +114,19 @@ def _run_file(batch_id: str, session_id: str, req: BatchRunRequest):
             excel_bytes   = _generate_excel(df_out, original_cols)
             update_session(session_id, {"excel_bytes": excel_bytes, "df_working": df_out})
 
-            # Persist to disk for later re-download
+            # Persist to disk; store id for later download
+            storage_file_id = None
             try:
-                _persist_file(sess.get("file_name", "output.xlsx"), excel_bytes)
+                rec = _persist_file(sess.get("file_name", "output.xlsx"), excel_bytes)
+                storage_file_id = rec["id"]
             except Exception:
                 pass
 
             if file_entry:
-                file_entry["status"]         = "done"
-                file_entry["elapsed"]        = round(elapsed, 1)
-                file_entry["download_ready"] = True
+                file_entry["status"]          = "done"
+                file_entry["elapsed"]         = round(elapsed, 1)
+                file_entry["download_ready"]  = True
+                file_entry["storage_file_id"] = storage_file_id
 
     except Exception as e:
         if file_entry:
@@ -119,10 +139,7 @@ def _run_file(batch_id: str, session_id: str, req: BatchRunRequest):
 def _check_batch_done(batch_id: str):
     batch = _batch_store.get(batch_id, {})
     if all(f["status"] in ("done", "error", "cancelled") for f in batch.get("files", [])):
-        if batch.get("cancelled"):
-            batch["status"] = "cancelled"
-        else:
-            batch["status"] = "done"
+        batch["status"] = "cancelled" if batch.get("cancelled") else "done"
 
 
 # ─── routes ─────────────────────────────────────────────────────────────────
@@ -155,22 +172,29 @@ async def batch_upload(files: list[UploadFile] = File(...)):
             "file_name":        name,
         })
         file_sessions.append({
-            "session_id":   sid,
-            "file_name":    name,
-            "rows":         len(df),
-            "columns":      len(df.columns),
-            "column_names": list(df.columns),
-            "status":       "ready",
-            "step_index":   0,
-            "total_steps":  0,
-            "current_step": "",
+            "session_id":     sid,
+            "file_name":      name,
+            "rows":           len(df),
+            "columns":        len(df.columns),
+            "column_names":   list(df.columns),
+            "status":         "ready",
+            "step_index":     0,
+            "total_steps":    0,
+            "current_step":   "",
             "download_ready": False,
+            "storage_file_id": None,
         })
 
     if not file_sessions:
         raise HTTPException(400, "No valid .xlsx or .csv files found in upload.")
 
-    _batch_store[batch_id] = {"files": file_sessions, "status": "ready", "cancelled": False}
+    _batch_store[batch_id] = {
+        "files":      file_sessions,
+        "status":     "ready",
+        "cancelled":  False,
+        "started_at": None,
+        "name":       None,
+    }
     return {"batch_id": batch_id, "file_count": len(file_sessions), "files": file_sessions}
 
 
@@ -180,15 +204,24 @@ def run_batch(req: BatchRunRequest):
     if not batch:
         raise HTTPException(404, "Batch not found.")
 
-    batch["status"]    = "running"
-    batch["cancelled"] = False
+    batch["status"]     = "running"
+    batch["cancelled"]  = False
+    batch["started_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Auto-generate display name
+    names = [f["file_name"] for f in batch["files"]]
+    if len(names) == 1:
+        batch["name"] = names[0]
+    else:
+        batch["name"] = f"{names[0]} + {len(names) - 1} more"
 
     for f in batch["files"]:
-        f["status"]       = "pending"
-        f["step_index"]   = 0
-        f["total_steps"]  = 0
-        f["current_step"] = ""
-        f["download_ready"] = False
+        f["status"]          = "pending"
+        f["step_index"]      = 0
+        f["total_steps"]     = 0
+        f["current_step"]    = ""
+        f["download_ready"]  = False
+        f["storage_file_id"] = None
         _pool.submit(_run_file, req.batch_id, f["session_id"], req)
 
     return {"status": "started", "file_count": len(batch["files"])}
@@ -226,4 +259,40 @@ def batch_download_file(session_id: str):
         content=sess["excel_bytes"],
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="qc_{stem}.xlsx"'},
+    )
+
+
+@router.get("/batch/download-all/{batch_id}")
+def batch_download_all(batch_id: str):
+    """Stream a ZIP archive of all completed files in the batch."""
+    batch = _batch_store.get(batch_id)
+    if not batch:
+        raise HTTPException(404, "Batch not found.")
+
+    done_files = [f for f in batch["files"] if f["status"] == "done"]
+    if not done_files:
+        raise HTTPException(404, "No completed files in this batch yet.")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in done_files:
+            excel_bytes = None
+            # Prefer in-memory session (fast path)
+            sess = get_session(f["session_id"])
+            if sess and "excel_bytes" in sess:
+                excel_bytes = sess["excel_bytes"]
+            # Fallback: read from persistent disk storage
+            elif f.get("storage_file_id"):
+                rec = _get_stored_file(f["storage_file_id"])
+                if rec:
+                    excel_bytes = Path(rec["path"]).read_bytes()
+
+            if excel_bytes:
+                stem = f["file_name"].rsplit(".", 1)[0]
+                zf.writestr(f"qc_{stem}.xlsx", excel_bytes)
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="batch_{batch_id[:8]}_output.zip"'},
     )

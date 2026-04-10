@@ -127,3 +127,24 @@ export async function runCleanup() {
 export function storedFileDownloadUrl(fileId) {
   return `/api/storage/download/${fileId}`
 }
+
+// ── Background Jobs ────────────────────────────────────────────────────────
+
+export async function getBackgroundJobs() {
+  const { data } = await axios.get('/api/background-jobs')
+  return data
+}
+
+export async function dismissSingleJob(jobId) {
+  const { data } = await axios.delete(`/api/background-jobs/single/${jobId}`)
+  return data
+}
+
+export async function dismissBatchJob(batchId) {
+  const { data } = await axios.delete(`/api/background-jobs/batch/${batchId}`)
+  return data
+}
+
+export function batchDownloadAllUrl(batchId) {
+  return `/api/batch/download-all/${batchId}`
+}

@@ -95,9 +95,11 @@ def _run_pipeline_task(job_id: str, req: RunRequest):
         excel_bytes = _generate_excel(df_out, original_cols)
         update_session(req.session_id, {"excel_bytes": excel_bytes})
 
-        # Persist to disk for later re-download
+        # Persist to disk for later re-download; capture storage id for background page
+        storage_file_id = None
         try:
-            _persist_file(sess.get("file_name", "output.xlsx"), excel_bytes)
+            rec = _persist_file(sess.get("file_name", "output.xlsx"), excel_bytes)
+            storage_file_id = rec["id"]
         except Exception:
             pass  # storage failure must not abort the pipeline
 
@@ -110,6 +112,7 @@ def _run_pipeline_task(job_id: str, req: RunRequest):
             "distributions":    distributions,
             "rows":             len(df_out),
             "download_ready":   True,
+            "storage_file_id":  storage_file_id,
         })
     except Exception as e:
         update_job(job_id, {"status": "error", "error": str(e)})
@@ -121,7 +124,7 @@ def run_pipeline(req: RunRequest):
     sess = get_session(req.session_id)
     if not sess:
         raise HTTPException(404, "Session not found. Please re-upload the file.")
-    job_id = create_job(req.session_id)
+    job_id = create_job(req.session_id, file_name=sess.get("file_name", ""))
     _pool.submit(_run_pipeline_task, job_id, req)
     return {"job_id": job_id, "status": "started"}
 
