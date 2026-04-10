@@ -1,24 +1,8 @@
 """
 Pure-Python pipeline executor — no Streamlit dependency.
-
-Execution model (three phases):
-  Phase 1 — Sequential:  name_split, dot_remove
-             These OVERWRITE existing columns so must complete before anything else reads them.
-
-  Phase 2 — Parallel:    all remaining independent steps run concurrently.
-             Each step only ADDS new columns; none touches the same output column as another.
-             A temporary ThreadPoolExecutor is spun up per pipeline run and torn down after.
-
-  Phase 3 — Deferred:    validate_phone_state (per phone column)
-             Depends on normalize_phone_excel output from Phase 2.
-
-Batch files (different DataFrames) are still dispatched concurrently by the caller via the
-outer ThreadPoolExecutor in batch.py / pipeline.py — that is unaffected by this change.
+Mirrors the logic in ui_old/pipeline_runner.py but returns plain dicts.
 """
-import os
 import time
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import json
 
@@ -38,13 +22,6 @@ from functions_qc.job_title_handler.job_title_categories           import catego
 from functions_qc.sic_code_naics_handler.sic_naics_handler         import process_sic_naics
 
 _CONFIG_PATH = Path(__file__).parent.parent / "instructions" / "runner_config.json"
-
-# Steps that overwrite existing columns — must run sequentially before all others
-_SEQUENTIAL_STEPS = frozenset({"name_split", "dot_remove"})
-
-# Max parallel workers for Phase 2 within a single pipeline run.
-# Keep moderate so multiple concurrent file jobs don't over-subscribe the machine.
-_MAX_PAR_WORKERS = max(2, min(8, (os.cpu_count() or 4)))
 
 STEP_LABELS = {
     "name_split":                "0. Split full name into parts",
@@ -167,153 +144,42 @@ def _build_steps(df, cols, toggles, thresholds):
     return steps
 
 
-# ─── Step runners ─────────────────────────────────────────────────────────────
-
-def _run_seq(df, step):
-    """Run a step in-place (sequential). Returns (df, result_dict)."""
-    t0 = time.time()
-    try:
-        df, detail = step["func"](df, **step["kwargs"])
-        return df, {
-            "step":    step["name"],
-            "label":   step["label"],
-            "status":  "ok",
-            "detail":  detail if isinstance(detail, dict) else {"message": str(detail)},
-            "elapsed": round(time.time() - t0, 3),
-            "parallel": False,
-        }
-    except Exception as e:
-        return df, {
-            "step": step["name"], "label": step["label"], "status": "error",
-            "detail": {"message": str(e)}, "elapsed": round(time.time() - t0, 3),
-            "parallel": False,
-        }
-
-
-def _run_par(df_snapshot, step):
-    """
-    Run a step on a private copy of df_snapshot (called from a worker thread).
-    Returns (new_columns_as_numpy_dict, result_dict).
-    Only new columns are returned so the caller merges them safely from the main thread.
-    """
-    t0 = time.time()
-    try:
-        df_copy = df_snapshot.copy()
-        df_out, detail = step["func"](df_copy, **step["kwargs"])
-        existing = set(df_snapshot.columns)
-        new_cols = {
-            col: df_out[col].values          # numpy array — index-independent, safe to assign
-            for col in df_out.columns
-            if col not in existing
-        }
-        return new_cols, {
-            "step":    step["name"],
-            "label":   step["label"],
-            "status":  "ok",
-            "detail":  detail if isinstance(detail, dict) else {"message": str(detail)},
-            "elapsed": round(time.time() - t0, 3),
-            "parallel": True,
-        }
-    except Exception as e:
-        return {}, {
-            "step": step["name"], "label": step["label"], "status": "error",
-            "detail": {"message": str(e)}, "elapsed": round(time.time() - t0, 3),
-            "parallel": True,
-        }
-
-
-# ─── Main executor ────────────────────────────────────────────────────────────
-
 def execute_pipeline(df, column_mapping, step_toggles, thresholds, progress_cb=None, cancel_check=None):
     """
-    Run all enabled steps and return (df_out, results, elapsed_seconds).
-
-    progress_cb(step_index, total_steps, label)  — called as steps complete.
-    cancel_check()                               — returns True when the job is cancelled.
+    Run all steps and return (df, results, elapsed_seconds).
+    progress_cb(step_index, total_steps, label) is called before each step.
+    cancel_check() returns True if the job has been cancelled.
     """
     steps   = _build_steps(df, column_mapping, step_toggles, thresholds)
-    total   = len(steps)
     results = []
+    total   = len(steps)
     t_start = time.time()
 
-    # Preserve original step order for result sorting
-    step_order = {(s["name"], s["label"]): i for i, s in enumerate(steps)}
-
-    def _cancelled():
-        return bool(cancel_check and cancel_check())
-
-    # Partition into three phases
-    seq_steps = [s for s in steps if s["name"] in _SEQUENTIAL_STEPS]
-    def_steps = [s for s in steps if s.get("deferred")]
-    par_steps = [s for s in steps if s["name"] not in _SEQUENTIAL_STEPS and not s.get("deferred")]
-
-    done = 0  # steps reported so far
-
-    def _cb(label):
-        nonlocal done
-        done += 1
-        if progress_cb:
-            progress_cb(done, total, label)
-
-    # ── Phase 1: Sequential (overwrite existing columns) ──────────────────────
-    for step in seq_steps:
-        if _cancelled():
+    for i, step in enumerate(steps):
+        if cancel_check and cancel_check():
             return df, results, round(time.time() - t_start, 3)
-        _cb(step["label"])
-        df, result = _run_seq(df, step)
-        results.append(result)
-
-    # ── Phase 2: Parallel (add-only, independent steps) ───────────────────────
-    if par_steps and not _cancelled():
-        n_workers = min(len(par_steps), _MAX_PAR_WORKERS)
-
+        label = step["label"]
         if progress_cb:
-            progress_cb(done, total, f"Running {len(par_steps)} steps in parallel…")
+            progress_cb(i, total, label)
 
-        # Each worker gets its own copy of df; the main thread merges new columns back.
-        snapshot = df
-        par_results = []
-
-        with ThreadPoolExecutor(max_workers=n_workers, thread_name_prefix="qc_par") as ex:
-            future_map = {ex.submit(_run_par, snapshot, s): s for s in par_steps}
-            for future in as_completed(future_map):
-                if _cancelled():
-                    # Cancel pending futures (Python 3.9+)
-                    for f in future_map:
-                        f.cancel()
-                    break
-                new_cols, result = future.result()
-                # Merge new columns into df (safe: only main thread writes to df)
-                for col, arr in new_cols.items():
-                    df[col] = arr
-                par_results.append(result)
-                done += 1
-                if progress_cb:
-                    progress_cb(done, total, result["label"])
-
-        results.extend(par_results)
-
-    # ── Phase 3: Deferred (validate_phone_state — needs Phase 2 phone output) ─
-    for step in def_steps:
-        if _cancelled():
-            return df, results, round(time.time() - t_start, 3)
-        std_col = step["kwargs"].get("area_code_mobile_number_column", "")
-        if std_col not in df.columns:
-            _cb(step["label"])
-            results.append({
-                "step": step["name"], "label": step["label"], "status": "skipped",
-                "detail": {"message": "prerequisite column not found"}, "elapsed": 0.0,
-                "parallel": False,
-            })
-            continue
-        _cb(step["label"])
-        df, result = _run_seq(df, step)
-        results.append(result)
-
-    # Restore original step order in results list
-    results.sort(key=lambda r: step_order.get((r["step"], r["label"]), 999))
+        if step.get("deferred"):
+            std_col = step["kwargs"].get("area_code_mobile_number_column", "")
+            if std_col not in df.columns:
+                results.append({"step": step["name"], "label": label, "status": "skipped",
+                                "detail": "prerequisite column not found", "elapsed": 0.0})
+                continue
+        t0 = time.time()
+        try:
+            df, detail = step["func"](df, **step["kwargs"])
+            elapsed = time.time() - t0
+            results.append({"step": step["name"], "label": label, "status": "ok",
+                            "detail": detail if isinstance(detail, dict) else {"message": str(detail)},
+                            "elapsed": round(elapsed, 3)})
+        except Exception as e:
+            elapsed = time.time() - t0
+            results.append({"step": step["name"], "label": label, "status": "error",
+                            "detail": {"message": str(e)}, "elapsed": round(elapsed, 3)})
 
     if progress_cb:
         progress_cb(total, total, "Done")
-
     return df, results, round(time.time() - t_start, 3)

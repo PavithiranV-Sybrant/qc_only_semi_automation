@@ -1,6 +1,7 @@
 import io
 import uuid
 import zipfile
+import concurrent.futures
 import openpyxl
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,9 +15,9 @@ from pydantic import BaseModel
 from backend.session_store import create_session, update_session, get_session
 from backend.pipeline_executor import execute_pipeline
 from backend.file_store import save_file as _persist_file, get_file as _get_stored_file
-from backend.executor_pool import pool as _pool
 
 router = APIRouter()
+_pool   = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 _PURPLE = openpyxl.styles.PatternFill(fill_type="solid", fgColor="B19CD9")
 
 # batch_id → { files: [...], status, cancelled, started_at, name }
