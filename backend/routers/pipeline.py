@@ -9,6 +9,7 @@ from typing import Any
 from backend.session_store import get_session, update_session
 from backend.job_store import create_job, get_job, update_job
 from backend.pipeline_executor import execute_pipeline
+from backend.file_store import save_file as _persist_file
 
 router  = APIRouter()
 _pool   = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -93,6 +94,12 @@ def _run_pipeline_task(job_id: str, req: RunRequest):
         update_job(job_id, {"status": "preparing_download", "current_step": "Preparing download file..."})
         excel_bytes = _generate_excel(df_out, original_cols)
         update_session(req.session_id, {"excel_bytes": excel_bytes})
+
+        # Persist to disk for later re-download
+        try:
+            _persist_file(sess.get("file_name", "output.xlsx"), excel_bytes)
+        except Exception:
+            pass  # storage failure must not abort the pipeline
 
         update_job(job_id, {
             "status":           "done",

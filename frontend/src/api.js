@@ -91,3 +91,39 @@ export async function cancelBatch(batchId) {
   const { data } = await axios.post(`/api/batch/cancel/${batchId}`)
   return data
 }
+
+// ── Settings & Storage ─────────────────────────────────────────────────────
+
+export async function getSettings() {
+  const { data } = await axios.get('/api/settings')
+  return data
+}
+
+export async function saveSettings(payload) {
+  const { data } = await axios.post('/api/settings', payload)
+  return data
+}
+
+export async function listStoredFiles() {
+  const { data } = await axios.get('/api/storage/files')
+  return data
+}
+
+export async function deleteStoredFile(fileId) {
+  const { data } = await axios.delete(`/api/storage/files/${fileId}`)
+  return data
+}
+
+export async function deleteAllStoredFiles() {
+  const { data } = await axios.delete('/api/storage/files')
+  return data
+}
+
+export async function runCleanup() {
+  const { data } = await axios.post('/api/storage/cleanup')
+  return data
+}
+
+export function storedFileDownloadUrl(fileId) {
+  return `/api/storage/download/${fileId}`
+}

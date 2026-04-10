@@ -10,6 +10,7 @@ import InfoPanel        from './components/InfoPanel'
 import LandingScreen    from './components/LandingScreen'
 import TemplateManager  from './components/TemplateManager'
 import BatchProcessor   from './components/BatchProcessor'
+import SettingsPage     from './components/SettingsPage'
 import './index.css'
 
 const TABS = [
@@ -180,6 +181,7 @@ export default function App() {
   if (currentMode === null)        return <LandingScreen onSelect={setCurrentMode} />
   if (currentMode === 'templates') return <TemplateManager onBack={() => setCurrentMode(null)} />
   if (currentMode === 'batch')     return <BatchProcessor  onBack={() => setCurrentMode(null)} />
+  if (currentMode === 'settings')  return <SettingsPage    onBack={() => setCurrentMode(null)} />
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">

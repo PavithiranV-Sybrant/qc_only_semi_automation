@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from backend.session_store import create_session, update_session, get_session
 from backend.pipeline_executor import execute_pipeline
+from backend.file_store import save_file as _persist_file
 
 router = APIRouter()
 _pool   = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -95,6 +96,13 @@ def _run_file(batch_id: str, session_id: str, req: BatchRunRequest):
             original_cols = sess["original_columns"]
             excel_bytes   = _generate_excel(df_out, original_cols)
             update_session(session_id, {"excel_bytes": excel_bytes, "df_working": df_out})
+
+            # Persist to disk for later re-download
+            try:
+                _persist_file(sess.get("file_name", "output.xlsx"), excel_bytes)
+            except Exception:
+                pass
+
             if file_entry:
                 file_entry["status"]         = "done"
                 file_entry["elapsed"]        = round(elapsed, 1)
