@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { listTemplates, saveTemplate, deleteTemplate } from '../api'
+import { listTemplates, saveTemplate, deleteTemplate, getBackgroundJobs, getSessionColumns, getConfig } from '../api'
 
 const COLUMN_ROLES = [
   { key: 'full_name',         label: 'Full Name' },
@@ -22,6 +22,34 @@ const EMPTY_FORM = {
   sheet_name:    '',
   phone_columns: '',
   columns:       Object.fromEntries(COLUMN_ROLES.map(r => [r.key, ''])),
+}
+
+/** Given a list of actual column names and a config (templates + default cols),
+ *  score templates, pick best match, return pre-filled form columns + phone. */
+function autoFillFromColumns(columns, cfg) {
+  const colSet = new Set(columns)
+  let bestMap = cfg.columns || {}
+  let bestScore = -1
+
+  for (const colMap of Object.values(cfg.templates || {})) {
+    let score = 0
+    for (const expected of Object.values(colMap)) {
+      if (Array.isArray(expected)) {
+        if (expected.some(e => colSet.has(e))) score++
+      } else if (expected && colSet.has(expected)) score++
+    }
+    if (score > bestScore) { bestScore = score; bestMap = colMap }
+  }
+
+  const newCols = {}
+  for (const { key } of COLUMN_ROLES) {
+    const expected = bestMap[key]
+    newCols[key] = (expected && colSet.has(expected)) ? expected : ''
+  }
+  const phone = Array.isArray(bestMap.phone_columns)
+    ? bestMap.phone_columns.filter(c => colSet.has(c)).join(', ')
+    : ''
+  return { columns: newCols, phone_columns: phone }
 }
 
 function templateToForm(t) {
@@ -47,6 +75,8 @@ export default function TemplateManager({ onBack }) {
   const [deleting,    setDeleting]    = useState(false)
   const [msg,         setMsg]         = useState(null)   // { type: 'ok'|'err', text }
   const [confirmDel,  setConfirmDel]  = useState(false)
+  const [singleJobs,  setSingleJobs]  = useState([])    // recent single-file jobs
+  const [autoFilling, setAutoFilling] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -67,12 +97,37 @@ export default function TemplateManager({ onBack }) {
     setConfirmDel(false)
   }
 
-  function startNew() {
+  async function startNew() {
     setSelected(null)
     setIsNew(true)
     setForm(EMPTY_FORM)
     setMsg(null)
     setConfirmDel(false)
+    // Load recent single-file jobs for the "load from file" dropdown
+    try {
+      const data = await getBackgroundJobs()
+      setSingleJobs((data.single || []).filter(j => j.session_id))
+    } catch {
+      setSingleJobs([])
+    }
+  }
+
+  async function handleLoadFromFile(sessionId) {
+    if (!sessionId) return
+    setAutoFilling(true)
+    try {
+      const [{ column_names }, cfg] = await Promise.all([
+        getSessionColumns(sessionId),
+        getConfig(),
+      ])
+      const { columns, phone_columns } = autoFillFromColumns(column_names, cfg)
+      setForm(f => ({ ...f, columns, phone_columns }))
+      setMsg({ type: 'ok', text: 'Columns auto-filled — review and save.' })
+    } catch {
+      setMsg({ type: 'err', text: 'Could not load columns from that file.' })
+    } finally {
+      setAutoFilling(false)
+    }
   }
 
   function setCol(key, val) {
@@ -196,6 +251,38 @@ export default function TemplateManager({ onBack }) {
                 </span>
               )}
             </div>
+
+            {/* Load from file — only when creating new */}
+            {isNew && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 space-y-2">
+                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Auto-fill from uploaded file</p>
+                <p className="text-xs text-blue-500">
+                  Select a recently uploaded single file to auto-detect and fill the column mappings below.
+                </p>
+                <div className="flex items-center gap-2">
+                  <select
+                    defaultValue=""
+                    onChange={e => handleLoadFromFile(e.target.value)}
+                    disabled={autoFilling || singleJobs.length === 0}
+                    className="flex-1 text-sm border border-blue-200 rounded-lg px-3 py-2 bg-white
+                      focus:outline-none focus:ring-2 focus:ring-blue-300
+                      disabled:bg-gray-50 disabled:text-gray-400"
+                  >
+                    <option value="">
+                      {singleJobs.length === 0 ? 'No recent files available' : '— Select a file —'}
+                    </option>
+                    {singleJobs.map(j => (
+                      <option key={j.id} value={j.session_id}>
+                        {j.file_name || j.session_id}
+                      </option>
+                    ))}
+                  </select>
+                  {autoFilling && (
+                    <span className="text-xs text-blue-500 shrink-0">Loading…</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Metadata */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
