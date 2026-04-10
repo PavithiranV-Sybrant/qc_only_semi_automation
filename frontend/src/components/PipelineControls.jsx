@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getConfig } from '../api'
 
-export default function PipelineControls({ onRun, loading, mappingApplied }) {
+export default function PipelineControls({ onRun, loading, mappingApplied, onConfigChange, hideRunButton }) {
   const [stepLabels, setStepLabels] = useState({})
   const [toggles, setToggles]       = useState({})
   const [thresholds, setThresholds] = useState({ name_email_fuzzy: 80, linkedin_fuzzy: 0.5 })
@@ -13,6 +13,13 @@ export default function PipelineControls({ onRun, loading, mappingApplied }) {
       setToggles(cfg.steps || {})
     })
   }, [])
+
+  // Notify parent of config changes (used by NewJobPanel to capture without a Run button)
+  useEffect(() => {
+    if (onConfigChange && Object.keys(toggles).length > 0) {
+      onConfigChange(toggles, thresholds)
+    }
+  }, [toggles, thresholds])
 
   function toggleAll(val) {
     setAllOn(val)
@@ -78,12 +85,14 @@ export default function PipelineControls({ onRun, loading, mappingApplied }) {
         </div>
       </div>
 
-      <button onClick={handleRun} disabled={loading || !mappingApplied}
-        className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 disabled:cursor-not-allowed
-          text-white font-semibold py-2.5 rounded-lg transition-colors text-sm">
-        {loading ? '⏳ Running...' : '▶  Run Pipeline'}
-      </button>
-      {!mappingApplied && (
+      {!hideRunButton && (
+        <button onClick={handleRun} disabled={loading || !mappingApplied}
+          className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 disabled:cursor-not-allowed
+            text-white font-semibold py-2.5 rounded-lg transition-colors text-sm">
+          {loading ? '⏳ Running...' : '▶  Run Pipeline'}
+        </button>
+      )}
+      {!hideRunButton && !mappingApplied && (
         <p className="text-xs text-amber-500 mt-1 text-center">Apply column mapping first</p>
       )}
     </div>

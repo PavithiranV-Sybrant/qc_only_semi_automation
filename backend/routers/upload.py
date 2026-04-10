@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
-from backend.session_store import create_session, update_session
+from backend.session_store import create_session, update_session, get_session
 from backend.pipeline_executor import load_config, STEP_LABELS
 
 router = APIRouter()
@@ -89,6 +89,18 @@ async def upload_file(file: UploadFile = File(...)):
         "preview_rows": preview,
         "data_quality": _data_quality(df),
         "large_file":   len(df) > WARN_ROW_COUNT,
+    }
+
+
+@router.get("/sessions/{session_id}/columns")
+def get_session_columns(session_id: str):
+    sess = get_session(session_id)
+    if not sess:
+        raise HTTPException(404, "Session not found.")
+    return {
+        "session_id":   session_id,
+        "file_name":    sess.get("file_name", ""),
+        "column_names": sess.get("original_columns", []),
     }
 
 

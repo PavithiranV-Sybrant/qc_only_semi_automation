@@ -47,6 +47,49 @@ def load_config():
     return cfg.get("steps", {}), cfg.get("thresholds", {}), cfg.get("columns", {})
 
 
+def detect_column_mapping(df_columns: list) -> tuple[dict, str]:
+    """
+    Score all saved templates + the default config against df_columns.
+    Returns (best_mapping_dict, template_name).
+    Used by batch processing so each file gets its own best-fit column mapping.
+    """
+    _, _, default_cols = load_config()
+
+    templates_dir = _CONFIG_PATH.parent / "templates"
+    templates: dict[str, dict] = {}
+    if templates_dir.exists():
+        for p in templates_dir.glob("*.json"):
+            try:
+                templates[p.stem] = json.loads(p.read_text()).get("columns", {})
+            except Exception:
+                pass
+
+    col_set = set(df_columns)
+
+    def _score(col_map: dict) -> int:
+        s = 0
+        for val in col_map.values():
+            if isinstance(val, list):
+                if any(v in col_set for v in val):
+                    s += 1
+            elif val and val in col_set:
+                s += 1
+        return s
+
+    best_name  = "default"
+    best_map   = default_cols
+    best_score = _score(default_cols)
+
+    for name, colmap in templates.items():
+        sc = _score(colmap)
+        if sc > best_score:
+            best_score = sc
+            best_name  = name
+            best_map   = colmap
+
+    return best_map, best_name
+
+
 def _build_steps(df, cols, toggles, thresholds):
     fln = cols.get("full_name")
     fn  = cols.get("first_name")
