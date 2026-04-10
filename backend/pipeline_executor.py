@@ -60,7 +60,7 @@ def detect_column_mapping(df_columns: list) -> tuple[dict, str]:
     if templates_dir.exists():
         for p in templates_dir.glob("*.json"):
             try:
-                templates[p.stem] = json.loads(p.read_text())
+                templates[p.stem] = json.loads(p.read_text()).get("columns", {})
             except Exception:
                 pass
 
