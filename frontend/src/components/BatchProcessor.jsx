@@ -217,10 +217,12 @@ export default function BatchProcessor({ onBack }) {
           {batchId && firstFile && (
             <section>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Column Mapping</p>
-              <p className="text-xs text-gray-400 mb-2">Based on first file's columns. Apply same mapping to all files.</p>
+              <p className="text-xs text-gray-400 mb-2">
+                Column mapping is auto-detected per file. Configure step options below.
+              </p>
               <ColumnMapper columns={firstFile.column_names} onMappingChange={setColumnMapping} />
               {columnMapping && (
-                <p className="text-xs text-green-600 mt-1">✓ {Object.keys(columnMapping).length} columns mapped</p>
+                <p className="text-xs text-green-600 mt-1">✓ {Object.keys(columnMapping).length} columns mapped (used as fallback)</p>
               )}
             </section>
           )}
@@ -347,6 +349,11 @@ export default function BatchProcessor({ onBack }) {
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[f.status] || 'bg-gray-100 text-gray-600'}`}>
                             {STATUS_LABELS[f.status] || f.status}
                           </span>
+                          {f.detected_template && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
+                              {f.detected_template}
+                            </span>
+                          )}
                           <span className="text-xs text-gray-400">{f.rows?.toLocaleString()} rows</span>
                           {f.elapsed && <span className="text-xs text-gray-400">{f.elapsed}s</span>}
                         </div>

@@ -212,6 +212,11 @@ function BatchSection({ batches, onDismiss }) {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm text-gray-800 truncate">{f.file_name}</p>
                       <StatusBadge status={f.status} />
+                      {f.detected_template && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
+                          {f.detected_template}
+                        </span>
+                      )}
                       {f.elapsed && <span className="text-xs text-gray-400">{fmtElapsed(f.elapsed)}</span>}
                       <span className="text-xs text-gray-400">{f.rows?.toLocaleString()} rows</span>
                     </div>

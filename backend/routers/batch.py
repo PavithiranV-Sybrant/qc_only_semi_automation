@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from backend.session_store import create_session, update_session, get_session
-from backend.pipeline_executor import execute_pipeline
+from backend.pipeline_executor import execute_pipeline, detect_column_mapping
 from backend.file_store import save_file as _persist_file, get_file as _get_stored_file
 from backend import job_queue
 
@@ -99,8 +99,17 @@ def _run_file(batch_id: str, session_id: str, req: BatchRunRequest):
 
     try:
         df = sess["df_original"].copy()
+
+        # Auto-detect the best column mapping for THIS file's actual columns.
+        # This ensures mixed-template batches each get the right mapping.
+        auto_map, detected_tpl = detect_column_mapping(df.columns.tolist())
+        # Fall back to the shared mapping if nothing auto-detected matched
+        effective_mapping = auto_map if any(v for v in auto_map.values() if v) else req.column_mapping
+        if file_entry:
+            file_entry["detected_template"] = detected_tpl
+
         df_out, _, elapsed = execute_pipeline(
-            df, req.column_mapping, req.step_toggles, req.thresholds,
+            df, effective_mapping, req.step_toggles, req.thresholds,
             progress_cb=progress_cb,
             cancel_check=cancel_check,
         )
@@ -171,17 +180,18 @@ async def batch_upload(files: list[UploadFile] = File(...)):
             "file_name":        name,
         })
         file_sessions.append({
-            "session_id":     sid,
-            "file_name":      name,
-            "rows":           len(df),
-            "columns":        len(df.columns),
-            "column_names":   list(df.columns),
-            "status":         "ready",
-            "step_index":     0,
-            "total_steps":    0,
-            "current_step":   "",
-            "download_ready": False,
-            "storage_file_id": None,
+            "session_id":        sid,
+            "file_name":         name,
+            "rows":              len(df),
+            "columns":           len(df.columns),
+            "column_names":      list(df.columns),
+            "status":            "ready",
+            "step_index":        0,
+            "total_steps":       0,
+            "current_step":      "",
+            "download_ready":    False,
+            "storage_file_id":   None,
+            "detected_template": None,
         })
 
     if not file_sessions:
