@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   getBackgroundJobs, dismissSingleJob, dismissBatchJob,
   storedFileDownloadUrl, batchDownloadAllUrl, getQueue,
+  cancelPipeline, cancelBatch, cancelBatchFile,
 } from '../api'
 import NewJobPanel from './NewJobPanel'
 
@@ -98,7 +99,7 @@ function ProgressBar({ stepIndex, totalSteps, label }) {
 
 // ─── Single job expanded body ──────────────────────────────────────────────
 
-function SingleExpanded({ job }) {
+function SingleExpanded({ job, onCancel }) {
   const isActive = ['pending', 'running', 'preparing_download'].includes(job.status)
   return (
     <div className="px-5 py-4 bg-gray-50 space-y-3">
@@ -122,23 +123,33 @@ function SingleExpanded({ job }) {
         <p className="text-xs text-red-500">{job.error}</p>
       )}
 
-      {/* Download */}
-      {job.status === 'done' && job.storage_file_id && (
-        <a href={storedFileDownloadUrl(job.storage_file_id)} download
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-800
-            bg-white hover:bg-violet-50 border border-violet-200 px-3 py-1.5 rounded-lg transition-colors">
-          ↓ Download
-        </a>
-      )}
+      {/* Actions */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {job.status === 'done' && job.storage_file_id && (
+          <a href={storedFileDownloadUrl(job.storage_file_id)} download
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-800
+              bg-white hover:bg-violet-50 border border-violet-200 px-3 py-1.5 rounded-lg transition-colors">
+            ↓ Download
+          </a>
+        )}
+        {isActive && (
+          <button onClick={onCancel}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-800
+              bg-white hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition-colors">
+            ✕ Cancel Job
+          </button>
+        )}
+      </div>
     </div>
   )
 }
 
 // ─── Batch file row ────────────────────────────────────────────────────────
 
-function BatchFileRow({ f }) {
-  const startTime = fmtTimeOnly(f.started_at)
-  const endTime   = fmtTimeOnly(f.completed_at)
+function BatchFileRow({ f, onCancelFile }) {
+  const startTime    = fmtTimeOnly(f.started_at)
+  const endTime      = fmtTimeOnly(f.completed_at)
+  const isCancellable = ['pending', 'running'].includes(f.status)
 
   return (
     <div className="flex items-start gap-3 px-5 py-3">
@@ -177,24 +188,33 @@ function BatchFileRow({ f }) {
         )}
       </div>
 
-      {/* Per-file download */}
-      {f.status === 'done' && (
-        <a href={f.storage_file_id
-            ? storedFileDownloadUrl(f.storage_file_id)
-            : `/api/batch/download/${f.session_id}`}
-          download
-          className="shrink-0 text-xs font-semibold text-violet-600 hover:text-violet-800
-            bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-colors mt-0.5">
-          ↓ Download
-        </a>
-      )}
+      {/* Actions */}
+      <div className="flex items-center gap-2 shrink-0 mt-0.5">
+        {f.status === 'done' && (
+          <a href={f.storage_file_id
+              ? storedFileDownloadUrl(f.storage_file_id)
+              : `/api/batch/download/${f.session_id}`}
+            download
+            className="text-xs font-semibold text-violet-600 hover:text-violet-800
+              bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-colors">
+            ↓ Download
+          </a>
+        )}
+        {isCancellable && (
+          <button onClick={() => onCancelFile(f.session_id)}
+            className="text-xs font-semibold text-red-500 hover:text-red-700
+              bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
+            ✕ Cancel
+          </button>
+        )}
+      </div>
     </div>
   )
 }
 
 // ─── Batch expanded body ───────────────────────────────────────────────────
 
-function BatchExpanded({ batch }) {
+function BatchExpanded({ batch, onCancelFile }) {
   const done = (batch.files || []).filter(f => f.status === 'done')
   return (
     <div>
@@ -210,7 +230,7 @@ function BatchExpanded({ batch }) {
       )}
       <div className="divide-y divide-gray-100">
         {(batch.files || []).map(f => (
-          <BatchFileRow key={f.session_id} f={f} />
+          <BatchFileRow key={f.session_id} f={f} onCancelFile={onCancelFile} />
         ))}
       </div>
     </div>
@@ -219,7 +239,7 @@ function BatchExpanded({ batch }) {
 
 // ─── Unified job card ──────────────────────────────────────────────────────
 
-function JobCard({ item, onDismiss }) {
+function JobCard({ item, onDismiss, onCancel, onCancelFile }) {
   const isBatch  = item._kind === 'batch'
   const isActive = item._isActive
   const [open, setOpen] = useState(isActive)
@@ -257,6 +277,14 @@ function JobCard({ item, onDismiss }) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {isActive && (
+            <button
+              onClick={e => { e.stopPropagation(); onCancel() }}
+              className="text-xs font-semibold text-red-500 hover:text-red-700
+                bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg transition-colors">
+              ✕ Cancel
+            </button>
+          )}
           {!isActive && (
             <DismissBtn onClick={e => { e.stopPropagation(); onDismiss() }} />
           )}
@@ -268,8 +296,8 @@ function JobCard({ item, onDismiss }) {
       {open && (
         <div className="border-t border-gray-100">
           {isBatch
-            ? <BatchExpanded batch={item} />
-            : <SingleExpanded job={item} />
+            ? <BatchExpanded batch={item} onCancelFile={onCancelFile} />
+            : <SingleExpanded job={item} onCancel={onCancel} />
           }
         </div>
       )}
@@ -361,6 +389,21 @@ export default function BackgroundJobs({ onBack }) {
     loadJobs()
   }
 
+  async function handleCancelJob(item) {
+    try {
+      if (item._kind === 'single') await cancelPipeline(item.id)
+      else await cancelBatch(item.id)
+    } catch {}
+    loadJobs()
+  }
+
+  async function handleCancelFile(batchId, sessionId) {
+    try {
+      await cancelBatchFile(batchId, sessionId)
+    } catch {}
+    loadJobs()
+  }
+
   const anyCompleted = allItems.some(i => !i._isActive)
   const hasActive    = allItems.some(i => i._isActive)
 
@@ -427,6 +470,8 @@ export default function BackgroundJobs({ onBack }) {
               key={`${item._kind}-${item.id}`}
               item={item}
               onDismiss={() => handleDismiss(item)}
+              onCancel={() => handleCancelJob(item)}
+              onCancelFile={(sessionId) => handleCancelFile(item.id, sessionId)}
             />
           ))
         )}

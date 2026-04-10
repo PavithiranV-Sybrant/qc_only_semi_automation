@@ -92,6 +92,11 @@ export async function cancelBatch(batchId) {
   return data
 }
 
+export async function cancelBatchFile(batchId, sessionId) {
+  const { data } = await axios.post(`/api/batch/cancel-file/${batchId}/${sessionId}`)
+  return data
+}
+
 // ── Settings & Storage ─────────────────────────────────────────────────────
 
 export async function getSettings() {

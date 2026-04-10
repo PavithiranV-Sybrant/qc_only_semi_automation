@@ -96,7 +96,7 @@ def _run_file(batch_id: str, session_id: str, req: BatchRunRequest):
             file_entry["current_step"] = label
 
     def cancel_check():
-        return batch.get("cancelled", False)
+        return batch.get("cancelled", False) or bool(file_entry and file_entry.get("cancel_requested", False))
 
     try:
         df = sess["df_original"].copy()
@@ -198,6 +198,7 @@ async def batch_upload(files: list[UploadFile] = File(...)):
             "detected_template": None,
             "started_at":        None,
             "completed_at":      None,
+            "cancel_requested":  False,
         })
 
     if not file_sessions:
@@ -235,10 +236,11 @@ def run_batch(req: BatchRunRequest):
         f["step_index"]      = 0
         f["total_steps"]     = 0
         f["current_step"]    = ""
-        f["download_ready"]  = False
-        f["storage_file_id"] = None
-        f["started_at"]      = None
-        f["completed_at"]    = None
+        f["download_ready"]   = False
+        f["storage_file_id"]  = None
+        f["started_at"]       = None
+        f["completed_at"]     = None
+        f["cancel_requested"] = False
 
     def task():
         job_queue.mark_running(req.batch_id)
@@ -246,6 +248,10 @@ def run_batch(req: BatchRunRequest):
             if batch.get("cancelled"):
                 if f["status"] == "pending":
                     f["status"] = "cancelled"
+                continue
+            if f["status"] == "cancelled" or f.get("cancel_requested"):
+                f["status"]       = "cancelled"
+                f["completed_at"] = datetime.now(timezone.utc).isoformat()
                 continue
             _run_file(req.batch_id, f["session_id"], req)  # blocking — serial execution
         _check_batch_done(req.batch_id)
@@ -276,6 +282,25 @@ def cancel_batch(batch_id: str):
     for f in batch["files"]:
         if f["status"] in ("pending", "running"):
             f["status"] = "cancelled"
+    return {"status": "cancelling"}
+
+
+@router.post("/batch/cancel-file/{batch_id}/{session_id}")
+def cancel_batch_file(batch_id: str, session_id: str):
+    """Cancel a single file within a batch without stopping the rest."""
+    batch = _batch_store.get(batch_id)
+    if not batch:
+        raise HTTPException(404, "Batch not found.")
+    file_entry = next((f for f in batch.get("files", []) if f["session_id"] == session_id), None)
+    if not file_entry:
+        raise HTTPException(404, "File not found in batch.")
+    if file_entry["status"] == "pending":
+        # Not yet started — cancel immediately
+        file_entry["status"]       = "cancelled"
+        file_entry["completed_at"] = datetime.now(timezone.utc).isoformat()
+    elif file_entry["status"] == "running":
+        # Running — set flag; pipeline checks it between steps
+        file_entry["cancel_requested"] = True
     return {"status": "cancelling"}
 
 
