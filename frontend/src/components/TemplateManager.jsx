@@ -1,0 +1,304 @@
+import { useState, useEffect } from 'react'
+import { listTemplates, saveTemplate, deleteTemplate } from '../api'
+
+const COLUMN_ROLES = [
+  { key: 'full_name',         label: 'Full Name' },
+  { key: 'first_name',        label: 'First Name' },
+  { key: 'middle_name',       label: 'Middle Name' },
+  { key: 'last_name',         label: 'Last Name' },
+  { key: 'company',           label: 'Company' },
+  { key: 'email',             label: 'Email' },
+  { key: 'office_state',      label: 'Office State' },
+  { key: 'employee_count',    label: 'Employee Count' },
+  { key: 'linkedin',          label: 'LinkedIn' },
+  { key: 'primary_industry',  label: 'Primary Industry' },
+  { key: 'job_title',         label: 'Job Title' },
+  { key: 'sic_code',          label: 'SIC Code' },
+]
+
+const EMPTY_FORM = {
+  name:          '',
+  comment:       '',
+  sheet_name:    '',
+  phone_columns: '',
+  columns:       Object.fromEntries(COLUMN_ROLES.map(r => [r.key, ''])),
+}
+
+function templateToForm(t) {
+  return {
+    name:          t.name,
+    comment:       t.comment || '',
+    sheet_name:    t.sheet_name || '',
+    phone_columns: Array.isArray(t.columns.phone_columns)
+      ? t.columns.phone_columns.join(', ')
+      : (t.columns.phone_columns || ''),
+    columns:       Object.fromEntries(
+      COLUMN_ROLES.map(r => [r.key, t.columns[r.key] || ''])
+    ),
+  }
+}
+
+export default function TemplateManager({ onBack }) {
+  const [templates,   setTemplates]   = useState([])
+  const [selected,    setSelected]    = useState(null)   // template name being edited
+  const [isNew,       setIsNew]       = useState(false)
+  const [form,        setForm]        = useState(EMPTY_FORM)
+  const [saving,      setSaving]      = useState(false)
+  const [deleting,    setDeleting]    = useState(false)
+  const [msg,         setMsg]         = useState(null)   // { type: 'ok'|'err', text }
+  const [confirmDel,  setConfirmDel]  = useState(false)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    try {
+      const data = await listTemplates()
+      setTemplates(data)
+    } catch {
+      setMsg({ type: 'err', text: 'Failed to load templates.' })
+    }
+  }
+
+  function selectTemplate(t) {
+    setSelected(t.name)
+    setIsNew(false)
+    setForm(templateToForm(t))
+    setMsg(null)
+    setConfirmDel(false)
+  }
+
+  function startNew() {
+    setSelected(null)
+    setIsNew(true)
+    setForm(EMPTY_FORM)
+    setMsg(null)
+    setConfirmDel(false)
+  }
+
+  function setCol(key, val) {
+    setForm(f => ({ ...f, columns: { ...f.columns, [key]: val } }))
+  }
+
+  async function handleSave() {
+    const name = form.name.trim()
+    if (!name) return setMsg({ type: 'err', text: 'Template name is required.' })
+
+    const phoneArr = form.phone_columns
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+
+    const payload = {
+      comment:    form.comment.trim(),
+      sheet_name: form.sheet_name.trim() || null,
+      columns:    {
+        ...form.columns,
+        phone_columns: phoneArr,
+      },
+    }
+
+    setSaving(true)
+    setMsg(null)
+    try {
+      await saveTemplate(name, payload)
+      await load()
+      setIsNew(false)
+      setSelected(name)
+      setMsg({ type: 'ok', text: 'Template saved.' })
+    } catch (e) {
+      setMsg({ type: 'err', text: e.response?.data?.detail || 'Save failed.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!selected) return
+    setDeleting(true)
+    try {
+      await deleteTemplate(selected)
+      await load()
+      setSelected(null)
+      setIsNew(false)
+      setForm(EMPTY_FORM)
+      setMsg({ type: 'ok', text: 'Template deleted.' })
+    } catch (e) {
+      setMsg({ type: 'err', text: e.response?.data?.detail || 'Delete failed.' })
+    } finally {
+      setDeleting(false)
+      setConfirmDel(false)
+    }
+  }
+
+  const hasForm = isNew || selected !== null
+
+  return (
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+
+      {/* Left panel — template list */}
+      <aside className="w-72 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+        <div className="px-4 py-4 border-b border-gray-200 flex items-center gap-2">
+          <button onClick={onBack}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-violet-600 transition-colors" title="Back to home">
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h1 className="text-base font-bold text-violet-700">Template Manager</h1>
+        </div>
+
+        <div className="p-3">
+          <button onClick={startNew}
+            className="w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
+            <span className="text-lg leading-none">+</span> New Template
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1.5">
+          {templates.length === 0 && (
+            <p className="text-xs text-gray-400 px-1 pt-2">No templates yet. Click "New Template" to create one.</p>
+          )}
+          {templates.map(t => (
+            <button key={t.name} onClick={() => selectTemplate(t)}
+              className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors
+                ${selected === t.name && !isNew
+                  ? 'bg-violet-50 border border-violet-300 text-violet-700'
+                  : 'hover:bg-gray-50 border border-transparent text-gray-700'}`}>
+              <p className="font-semibold truncate">{t.name}</p>
+              {t.comment && (
+                <p className="text-xs text-gray-400 truncate mt-0.5">{t.comment}</p>
+              )}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      {/* Right panel — form */}
+      <main className="flex-1 overflow-y-auto">
+        {!hasForm ? (
+          <div className="flex flex-col items-center justify-center h-full text-center px-6">
+            <div className="text-5xl mb-4">🗂️</div>
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">Select or create a template</h2>
+            <p className="text-gray-400 text-sm max-w-sm">
+              Templates define how column roles map to your data source's actual column headers.
+            </p>
+          </div>
+        ) : (
+          <div className="max-w-2xl mx-auto p-6 space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-800">
+                {isNew ? 'New Template' : `Edit: ${selected}`}
+              </h2>
+              {msg && (
+                <span className={`text-xs px-3 py-1 rounded-full font-medium
+                  ${msg.type === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  {msg.text}
+                </span>
+              )}
+            </div>
+
+            {/* Metadata */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Metadata</p>
+
+              <label className="block">
+                <span className="text-xs text-gray-600 font-medium">Template Name <span className="text-red-400">*</span></span>
+                <input
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  readOnly={!isNew}
+                  placeholder="e.g. manta_database"
+                  className={`mt-1 block w-full text-sm border rounded-lg px-3 py-2 outline-none
+                    focus:ring-2 focus:ring-violet-400 focus:border-violet-400
+                    ${!isNew ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                />
+                {isNew && <p className="text-xs text-gray-400 mt-0.5">Letters, numbers, underscores, hyphens only.</p>}
+              </label>
+
+              <label className="block">
+                <span className="text-xs text-gray-600 font-medium">Description</span>
+                <input
+                  value={form.comment}
+                  onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
+                  placeholder="Short description of this template"
+                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs text-gray-600 font-medium">Sheet Name <span className="text-gray-400 font-normal">(optional — leave blank for auto)</span></span>
+                <input
+                  value={form.sheet_name}
+                  onChange={e => setForm(f => ({ ...f, sheet_name: e.target.value }))}
+                  placeholder="Leave blank to use the first sheet"
+                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+                />
+              </label>
+            </div>
+
+            {/* Column mappings */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Column Mappings</p>
+              <p className="text-xs text-gray-400">Enter the exact column header as it appears in your Excel/CSV file.</p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {COLUMN_ROLES.map(r => (
+                  <label key={r.key} className="block">
+                    <span className="text-xs text-gray-600 font-medium">{r.label}</span>
+                    <input
+                      value={form.columns[r.key]}
+                      onChange={e => setCol(r.key, e.target.value)}
+                      placeholder={`Column header for ${r.label}`}
+                      className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+                    />
+                  </label>
+                ))}
+              </div>
+
+              {/* Phone columns — special array field */}
+              <label className="block">
+                <span className="text-xs text-gray-600 font-medium">Phone Columns</span>
+                <span className="text-xs text-gray-400 ml-1">(comma-separated)</span>
+                <input
+                  value={form.phone_columns}
+                  onChange={e => setForm(f => ({ ...f, phone_columns: e.target.value }))}
+                  placeholder="e.g. BusinessPhone, MobilePhone, OfficePhone"
+                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+                />
+              </label>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pb-8">
+              <button onClick={handleSave} disabled={saving}
+                className="bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+                {saving ? 'Saving…' : (isNew ? 'Create Template' : 'Save Changes')}
+              </button>
+
+              {!isNew && selected && (
+                confirmDel ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-red-600">Delete "{selected}"?</span>
+                    <button onClick={handleDelete} disabled={deleting}
+                      className="bg-red-500 hover:bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">
+                      {deleting ? 'Deleting…' : 'Confirm'}
+                    </button>
+                    <button onClick={() => setConfirmDel(false)}
+                      className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirmDel(true)}
+                    className="text-sm text-red-500 hover:text-red-700 font-medium transition-colors px-2">
+                    Delete
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
