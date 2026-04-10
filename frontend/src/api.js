@@ -42,11 +42,6 @@ export function downloadUrl(sessionId) {
   return `/api/download/${sessionId}`
 }
 
-export async function getSessionColumns(sessionId) {
-  const { data } = await axios.get(`/api/sessions/${sessionId}/columns`)
-  return data
-}
-
 // ── Templates ──────────────────────────────────────────────────────────────
 
 export async function listTemplates() {

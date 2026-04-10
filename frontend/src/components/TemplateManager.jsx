@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { listTemplates, saveTemplate, deleteTemplate, getBackgroundJobs, getSessionColumns, getConfig } from '../api'
+import { useState, useEffect, useRef } from 'react'
+import { listTemplates, saveTemplate, deleteTemplate, uploadFile, getConfig } from '../api'
 
 const COLUMN_ROLES = [
   { key: 'full_name',         label: 'Full Name' },
@@ -24,8 +24,7 @@ const EMPTY_FORM = {
   columns:       Object.fromEntries(COLUMN_ROLES.map(r => [r.key, ''])),
 }
 
-/** Given a list of actual column names and a config (templates + default cols),
- *  score templates, pick best match, return pre-filled form columns + phone. */
+/** Score templates against actual column names, return pre-filled form fields. */
 function autoFillFromColumns(columns, cfg) {
   const colSet = new Set(columns)
   let bestMap = cfg.columns || {}
@@ -66,17 +65,103 @@ function templateToForm(t) {
   }
 }
 
+// ─── File drop zone ────────────────────────────────────────────────────────
+
+function FileDropZone({ onColumns }) {
+  const [dragging,   setDragging]   = useState(false)
+  const [uploading,  setUploading]  = useState(false)
+  const [loadedFile, setLoadedFile] = useState(null)
+  const inputRef = useRef(null)
+
+  async function processFile(file) {
+    if (!file) return
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (!['xlsx', 'csv'].includes(ext)) return
+    setUploading(true)
+    setLoadedFile(null)
+    try {
+      const result = await uploadFile(file)
+      setLoadedFile(file.name)
+      onColumns(result.column_names || [])
+    } catch {
+      // silently ignore — parent will show error via onColumns([])
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function onDrop(e) {
+    e.preventDefault()
+    setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) processFile(file)
+  }
+
+  function onInputChange(e) {
+    const file = e.target.files?.[0]
+    if (file) processFile(file)
+    e.target.value = ''
+  }
+
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={onDrop}
+      onClick={() => !uploading && inputRef.current?.click()}
+      className={`relative flex items-center gap-4 px-5 py-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors
+        ${dragging  ? 'border-violet-400 bg-violet-50'
+        : uploading ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+        : loadedFile ? 'border-green-300 bg-green-50'
+        : 'border-gray-200 bg-gray-50 hover:border-violet-300 hover:bg-violet-50'}`}
+    >
+      <input ref={inputRef} type="file" accept=".xlsx,.csv" onChange={onInputChange} className="hidden" />
+
+      {uploading ? (
+        <>
+          <svg className="w-5 h-5 text-violet-400 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <span className="text-sm text-violet-600">Reading columns…</span>
+        </>
+      ) : loadedFile ? (
+        <>
+          <svg className="w-5 h-5 text-green-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <div className="min-w-0">
+            <p className="text-sm text-green-700 font-medium truncate">{loadedFile}</p>
+            <p className="text-xs text-green-500">Columns detected — mappings filled below. Click to load a different file.</p>
+          </div>
+        </>
+      ) : (
+        <>
+          <svg className="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+          </svg>
+          <div>
+            <p className="text-sm text-gray-600 font-medium">Drop a file here or click to browse</p>
+            <p className="text-xs text-gray-400">.xlsx or .csv — columns are read instantly</p>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Main component ────────────────────────────────────────────────────────
+
 export default function TemplateManager({ onBack }) {
-  const [templates,   setTemplates]   = useState([])
-  const [selected,    setSelected]    = useState(null)   // template name being edited
-  const [isNew,       setIsNew]       = useState(false)
-  const [form,        setForm]        = useState(EMPTY_FORM)
-  const [saving,      setSaving]      = useState(false)
-  const [deleting,    setDeleting]    = useState(false)
-  const [msg,         setMsg]         = useState(null)   // { type: 'ok'|'err', text }
-  const [confirmDel,  setConfirmDel]  = useState(false)
-  const [singleJobs,  setSingleJobs]  = useState([])    // recent single-file jobs
-  const [autoFilling, setAutoFilling] = useState(false)
+  const [templates,  setTemplates]  = useState([])
+  const [selected,   setSelected]   = useState(null)
+  const [isNew,      setIsNew]      = useState(false)
+  const [form,       setForm]       = useState(EMPTY_FORM)
+  const [saving,     setSaving]     = useState(false)
+  const [deleting,   setDeleting]   = useState(false)
+  const [msg,        setMsg]        = useState(null)
+  const [confirmDel, setConfirmDel] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -97,36 +182,26 @@ export default function TemplateManager({ onBack }) {
     setConfirmDel(false)
   }
 
-  async function startNew() {
+  function startNew() {
     setSelected(null)
     setIsNew(true)
     setForm(EMPTY_FORM)
     setMsg(null)
     setConfirmDel(false)
-    // Load recent single-file jobs for the "load from file" dropdown
-    try {
-      const data = await getBackgroundJobs()
-      setSingleJobs((data.single || []).filter(j => j.session_id))
-    } catch {
-      setSingleJobs([])
-    }
   }
 
-  async function handleLoadFromFile(sessionId) {
-    if (!sessionId) return
-    setAutoFilling(true)
+  async function handleFileColumns(columnNames) {
+    if (!columnNames.length) {
+      setMsg({ type: 'err', text: 'Could not read columns from file.' })
+      return
+    }
     try {
-      const [{ column_names }, cfg] = await Promise.all([
-        getSessionColumns(sessionId),
-        getConfig(),
-      ])
-      const { columns, phone_columns } = autoFillFromColumns(column_names, cfg)
+      const cfg = await getConfig()
+      const { columns, phone_columns } = autoFillFromColumns(columnNames, cfg)
       setForm(f => ({ ...f, columns, phone_columns }))
-      setMsg({ type: 'ok', text: 'Columns auto-filled — review and save.' })
+      setMsg({ type: 'ok', text: 'Column mappings filled — review and adjust if needed.' })
     } catch {
-      setMsg({ type: 'err', text: 'Could not load columns from that file.' })
-    } finally {
-      setAutoFilling(false)
+      setMsg({ type: 'err', text: 'Failed to load config for auto-detect.' })
     }
   }
 
@@ -146,10 +221,7 @@ export default function TemplateManager({ onBack }) {
     const payload = {
       comment:    form.comment.trim(),
       sheet_name: form.sheet_name.trim() || null,
-      columns:    {
-        ...form.columns,
-        phone_columns: phoneArr,
-      },
+      columns:    { ...form.columns, phone_columns: phoneArr },
     }
 
     setSaving(true)
@@ -252,35 +324,13 @@ export default function TemplateManager({ onBack }) {
               )}
             </div>
 
-            {/* Load from file — only when creating new */}
+            {/* File upload to auto-fill — only when creating new */}
             {isNew && (
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 space-y-2">
-                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Auto-fill from uploaded file</p>
-                <p className="text-xs text-blue-500">
-                  Select a recently uploaded single file to auto-detect and fill the column mappings below.
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Auto-detect from file <span className="normal-case font-normal text-gray-400">(optional)</span>
                 </p>
-                <div className="flex items-center gap-2">
-                  <select
-                    defaultValue=""
-                    onChange={e => handleLoadFromFile(e.target.value)}
-                    disabled={autoFilling || singleJobs.length === 0}
-                    className="flex-1 text-sm border border-blue-200 rounded-lg px-3 py-2 bg-white
-                      focus:outline-none focus:ring-2 focus:ring-blue-300
-                      disabled:bg-gray-50 disabled:text-gray-400"
-                  >
-                    <option value="">
-                      {singleJobs.length === 0 ? 'No recent files available' : '— Select a file —'}
-                    </option>
-                    {singleJobs.map(j => (
-                      <option key={j.id} value={j.session_id}>
-                        {j.file_name || j.session_id}
-                      </option>
-                    ))}
-                  </select>
-                  {autoFilling && (
-                    <span className="text-xs text-blue-500 shrink-0">Loading…</span>
-                  )}
-                </div>
+                <FileDropZone onColumns={handleFileColumns} />
               </div>
             )}
 
