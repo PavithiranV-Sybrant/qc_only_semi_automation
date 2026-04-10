@@ -65,6 +65,83 @@ function templateToForm(t) {
   }
 }
 
+// ─── Column field: dropdown (when columns available) or plain text input ──
+
+const MANUAL_SENTINEL = '__manual__'
+
+function ColumnField({ value, onChange, uploadedColumns, placeholder }) {
+  // true when user has chosen "Type manually" or value isn't in the list
+  const [manual, setManual] = useState(false)
+
+  // Sync manual state whenever value or list changes
+  useEffect(() => {
+    if (!uploadedColumns.length) { setManual(false); return }
+    if (value === '') { setManual(false); return }
+    setManual(!uploadedColumns.includes(value))
+  }, [value, uploadedColumns])
+
+  // No file uploaded → plain text input
+  if (!uploadedColumns.length) {
+    return (
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2
+          outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+      />
+    )
+  }
+
+  // File uploaded + manual mode → text input with a "← list" button
+  if (manual) {
+    return (
+      <div className="mt-1 flex gap-1">
+        <input
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Type column name…"
+          autoFocus
+          className="flex-1 text-sm border border-violet-300 rounded-lg px-3 py-2
+            outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+        />
+        <button
+          type="button"
+          onClick={() => { setManual(false); onChange('') }}
+          title="Back to list"
+          className="shrink-0 px-2.5 text-xs text-gray-400 hover:text-violet-600
+            border border-gray-200 hover:border-violet-300 rounded-lg transition-colors"
+        >
+          ↩
+        </button>
+      </div>
+    )
+  }
+
+  // File uploaded → dropdown
+  return (
+    <select
+      value={value}
+      onChange={e => {
+        if (e.target.value === MANUAL_SENTINEL) {
+          setManual(true)
+          onChange('')
+        } else {
+          onChange(e.target.value)
+        }
+      }}
+      className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2
+        bg-white outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+    >
+      <option value="">(not mapped)</option>
+      {uploadedColumns.map(c => (
+        <option key={c} value={c}>{c}</option>
+      ))}
+      <option value={MANUAL_SENTINEL}>— Type manually —</option>
+    </select>
+  )
+}
+
 // ─── File drop zone ────────────────────────────────────────────────────────
 
 function FileDropZone({ onColumns }) {
@@ -84,7 +161,7 @@ function FileDropZone({ onColumns }) {
       setLoadedFile(file.name)
       onColumns(result.column_names || [])
     } catch {
-      // silently ignore — parent will show error via onColumns([])
+      onColumns([])
     } finally {
       setUploading(false)
     }
@@ -93,13 +170,11 @@ function FileDropZone({ onColumns }) {
   function onDrop(e) {
     e.preventDefault()
     setDragging(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) processFile(file)
+    processFile(e.dataTransfer.files?.[0])
   }
 
   function onInputChange(e) {
-    const file = e.target.files?.[0]
-    if (file) processFile(file)
+    processFile(e.target.files?.[0])
     e.target.value = ''
   }
 
@@ -109,9 +184,9 @@ function FileDropZone({ onColumns }) {
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
       onClick={() => !uploading && inputRef.current?.click()}
-      className={`relative flex items-center gap-4 px-5 py-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors
-        ${dragging  ? 'border-violet-400 bg-violet-50'
-        : uploading ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+      className={`flex items-center gap-4 px-5 py-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors
+        ${dragging   ? 'border-violet-400 bg-violet-50'
+        : uploading  ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
         : loadedFile ? 'border-green-300 bg-green-50'
         : 'border-gray-200 bg-gray-50 hover:border-violet-300 hover:bg-violet-50'}`}
     >
@@ -132,7 +207,7 @@ function FileDropZone({ onColumns }) {
           </svg>
           <div className="min-w-0">
             <p className="text-sm text-green-700 font-medium truncate">{loadedFile}</p>
-            <p className="text-xs text-green-500">Columns detected — mappings filled below. Click to load a different file.</p>
+            <p className="text-xs text-green-500">Column dropdowns enabled. Click to load a different file.</p>
           </div>
         </>
       ) : (
@@ -143,7 +218,7 @@ function FileDropZone({ onColumns }) {
           </svg>
           <div>
             <p className="text-sm text-gray-600 font-medium">Drop a file here or click to browse</p>
-            <p className="text-xs text-gray-400">.xlsx or .csv — columns are read instantly</p>
+            <p className="text-xs text-gray-400">.xlsx or .csv — column dropdowns activate instantly</p>
           </div>
         </>
       )}
@@ -154,14 +229,15 @@ function FileDropZone({ onColumns }) {
 // ─── Main component ────────────────────────────────────────────────────────
 
 export default function TemplateManager({ onBack }) {
-  const [templates,  setTemplates]  = useState([])
-  const [selected,   setSelected]   = useState(null)
-  const [isNew,      setIsNew]      = useState(false)
-  const [form,       setForm]       = useState(EMPTY_FORM)
-  const [saving,     setSaving]     = useState(false)
-  const [deleting,   setDeleting]   = useState(false)
-  const [msg,        setMsg]        = useState(null)
-  const [confirmDel, setConfirmDel] = useState(false)
+  const [templates,        setTemplates]        = useState([])
+  const [selected,         setSelected]         = useState(null)
+  const [isNew,            setIsNew]            = useState(false)
+  const [form,             setForm]             = useState(EMPTY_FORM)
+  const [saving,           setSaving]           = useState(false)
+  const [deleting,         setDeleting]         = useState(false)
+  const [msg,              setMsg]              = useState(null)
+  const [confirmDel,       setConfirmDel]       = useState(false)
+  const [uploadedColumns,  setUploadedColumns]  = useState([])   // columns from dropped file
 
   useEffect(() => { load() }, [])
 
@@ -180,6 +256,7 @@ export default function TemplateManager({ onBack }) {
     setForm(templateToForm(t))
     setMsg(null)
     setConfirmDel(false)
+    setUploadedColumns([])
   }
 
   function startNew() {
@@ -188,9 +265,11 @@ export default function TemplateManager({ onBack }) {
     setForm(EMPTY_FORM)
     setMsg(null)
     setConfirmDel(false)
+    setUploadedColumns([])
   }
 
   async function handleFileColumns(columnNames) {
+    setUploadedColumns(columnNames)
     if (!columnNames.length) {
       setMsg({ type: 'err', text: 'Could not read columns from file.' })
       return
@@ -199,9 +278,9 @@ export default function TemplateManager({ onBack }) {
       const cfg = await getConfig()
       const { columns, phone_columns } = autoFillFromColumns(columnNames, cfg)
       setForm(f => ({ ...f, columns, phone_columns }))
-      setMsg({ type: 'ok', text: 'Column mappings filled — review and adjust if needed.' })
+      setMsg({ type: 'ok', text: 'Mappings auto-filled — adjust if needed.' })
     } catch {
-      setMsg({ type: 'err', text: 'Failed to load config for auto-detect.' })
+      setMsg({ type: 'err', text: 'Failed to auto-detect mappings.' })
     }
   }
 
@@ -266,7 +345,8 @@ export default function TemplateManager({ onBack }) {
       <aside className="w-72 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
         <div className="px-4 py-4 border-b border-gray-200 flex items-center gap-2">
           <button onClick={onBack}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-violet-600 transition-colors" title="Back to home">
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-violet-600 transition-colors"
+            title="Back to home">
             <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
@@ -276,7 +356,8 @@ export default function TemplateManager({ onBack }) {
 
         <div className="p-3">
           <button onClick={startNew}
-            className="w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
+            className="w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold py-2 rounded-lg
+              transition-colors flex items-center justify-center gap-1.5">
             <span className="text-lg leading-none">+</span> New Template
           </button>
         </div>
@@ -324,11 +405,12 @@ export default function TemplateManager({ onBack }) {
               )}
             </div>
 
-            {/* File upload to auto-fill — only when creating new */}
+            {/* File upload — only when creating new */}
             {isNew && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Auto-detect from file <span className="normal-case font-normal text-gray-400">(optional)</span>
+                  Load columns from file
+                  <span className="normal-case font-normal text-gray-400 ml-1">(optional — enables dropdowns)</span>
                 </p>
                 <FileDropZone onColumns={handleFileColumns} />
               </div>
@@ -339,7 +421,9 @@ export default function TemplateManager({ onBack }) {
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Metadata</p>
 
               <label className="block">
-                <span className="text-xs text-gray-600 font-medium">Template Name <span className="text-red-400">*</span></span>
+                <span className="text-xs text-gray-600 font-medium">
+                  Template Name <span className="text-red-400">*</span>
+                </span>
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -358,57 +442,74 @@ export default function TemplateManager({ onBack }) {
                   value={form.comment}
                   onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
                   placeholder="Short description of this template"
-                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2
+                    outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
                 />
               </label>
 
               <label className="block">
-                <span className="text-xs text-gray-600 font-medium">Sheet Name <span className="text-gray-400 font-normal">(optional — leave blank for auto)</span></span>
+                <span className="text-xs text-gray-600 font-medium">
+                  Sheet Name <span className="text-gray-400 font-normal">(optional — leave blank for auto)</span>
+                </span>
                 <input
                   value={form.sheet_name}
                   onChange={e => setForm(f => ({ ...f, sheet_name: e.target.value }))}
                   placeholder="Leave blank to use the first sheet"
-                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2
+                    outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
                 />
               </label>
             </div>
 
             {/* Column mappings */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Column Mappings</p>
-              <p className="text-xs text-gray-400">Enter the exact column header as it appears in your Excel/CSV file.</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Column Mappings</p>
+                {uploadedColumns.length > 0 && (
+                  <span className="text-xs text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full font-medium">
+                    {uploadedColumns.length} columns loaded
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">
+                {uploadedColumns.length > 0
+                  ? 'Select from the file\'s columns, or choose "— Type manually —" at the bottom of any dropdown.'
+                  : 'Enter the exact column header as it appears in your Excel/CSV file.'}
+              </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {COLUMN_ROLES.map(r => (
-                  <label key={r.key} className="block">
+                  <div key={r.key}>
                     <span className="text-xs text-gray-600 font-medium">{r.label}</span>
-                    <input
+                    <ColumnField
                       value={form.columns[r.key]}
-                      onChange={e => setCol(r.key, e.target.value)}
+                      onChange={val => setCol(r.key, val)}
+                      uploadedColumns={uploadedColumns}
                       placeholder={`Column header for ${r.label}`}
-                      className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
                     />
-                  </label>
+                  </div>
                 ))}
               </div>
 
-              {/* Phone columns — special array field */}
-              <label className="block">
+              {/* Phone columns */}
+              <div>
                 <span className="text-xs text-gray-600 font-medium">Phone Columns</span>
                 <span className="text-xs text-gray-400 ml-1">(comma-separated)</span>
                 <input
                   value={form.phone_columns}
                   onChange={e => setForm(f => ({ ...f, phone_columns: e.target.value }))}
                   placeholder="e.g. BusinessPhone, MobilePhone, OfficePhone"
-                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
+                  className="mt-1 block w-full text-sm border border-gray-300 rounded-lg px-3 py-2
+                    outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400"
                 />
-              </label>
+              </div>
             </div>
 
             {/* Actions */}
             <div className="flex items-center gap-3 pb-8">
               <button onClick={handleSave} disabled={saving}
-                className="bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+                className="bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white font-semibold
+                  px-6 py-2.5 rounded-lg transition-colors text-sm">
                 {saving ? 'Saving…' : (isNew ? 'Create Template' : 'Save Changes')}
               </button>
 
