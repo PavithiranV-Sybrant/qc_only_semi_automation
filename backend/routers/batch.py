@@ -86,7 +86,8 @@ def _run_file(batch_id: str, session_id: str, req: BatchRunRequest):
         return
 
     if file_entry:
-        file_entry["status"] = "running"
+        file_entry["status"]     = "running"
+        file_entry["started_at"] = datetime.now(timezone.utc).isoformat()
 
     def progress_cb(step_index, total_steps, label):
         if file_entry:
@@ -116,7 +117,8 @@ def _run_file(batch_id: str, session_id: str, req: BatchRunRequest):
 
         if cancel_check():
             if file_entry:
-                file_entry["status"] = "cancelled"
+                file_entry["status"]       = "cancelled"
+                file_entry["completed_at"] = datetime.now(timezone.utc).isoformat()
         else:
             original_cols = sess["original_columns"]
             excel_bytes   = _generate_excel(df_out, original_cols)
@@ -132,14 +134,16 @@ def _run_file(batch_id: str, session_id: str, req: BatchRunRequest):
 
             if file_entry:
                 file_entry["status"]          = "done"
+                file_entry["completed_at"]    = datetime.now(timezone.utc).isoformat()
                 file_entry["elapsed"]         = round(elapsed, 1)
                 file_entry["download_ready"]  = True
                 file_entry["storage_file_id"] = storage_file_id
 
     except Exception as e:
         if file_entry:
-            file_entry["status"] = "error"
-            file_entry["error"]  = str(e)
+            file_entry["status"]       = "error"
+            file_entry["error"]        = str(e)
+            file_entry["completed_at"] = datetime.now(timezone.utc).isoformat()
 
     _check_batch_done(batch_id)
 
@@ -192,6 +196,8 @@ async def batch_upload(files: list[UploadFile] = File(...)):
             "download_ready":    False,
             "storage_file_id":   None,
             "detected_template": None,
+            "started_at":        None,
+            "completed_at":      None,
         })
 
     if not file_sessions:
@@ -231,6 +237,8 @@ def run_batch(req: BatchRunRequest):
         f["current_step"]    = ""
         f["download_ready"]  = False
         f["storage_file_id"] = None
+        f["started_at"]      = None
+        f["completed_at"]    = None
 
     def task():
         job_queue.mark_running(req.batch_id)
