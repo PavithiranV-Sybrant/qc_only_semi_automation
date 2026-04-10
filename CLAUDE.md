@@ -60,6 +60,7 @@ git push origin v2.2.0
 | v2.1.0 | Employee count k-notation support (5k→5000) |
 | v2.1.1 | Sidebar UX tweaks, removed null% chart from Data Quality |
 | v2.2.0 | Fully responsive UI, mobile sidebar drawer, adaptive grids |
+| dev | Landing screen, Batch Processing, Template Manager, Settings, Background Jobs, persistent file storage, global sequential job queue, + New Job panel |
 
 ## Off-Limits
 
@@ -104,39 +105,87 @@ Pipeline step toggles, column mappings, and thresholds are in `instructions/runn
 [React frontend :5173]
     ↕ axios (proxied via vite)
 [FastAPI backend :8000]
-    ├── POST /api/upload                       — parse file, store session
-    ├── POST /api/run-pipeline                 — start background job, return job_id
-    ├── GET  /api/pipeline-status/{job_id}     — poll progress
-    ├── POST /api/cancel-pipeline/{job_id}     — set cancel flag
-    └── GET  /api/download/{session_id}        — serve pre-generated Excel
+    ├── POST /api/upload                         — parse file, store session
+    ├── POST /api/run-pipeline                   — enqueue single-file job, return job_id
+    ├── GET  /api/pipeline-status/{job_id}       — poll progress
+    ├── POST /api/cancel-pipeline/{job_id}       — set cancel flag
+    ├── GET  /api/download/{session_id}          — serve pre-generated Excel
+    ├── POST /api/batch/upload                   — parse multi-file upload, create batch
+    ├── POST /api/batch/run                      — enqueue batch job (files run serially)
+    ├── GET  /api/batch/status/{batch_id}        — poll batch progress
+    ├── POST /api/batch/cancel/{batch_id}        — cancel batch
+    ├── GET  /api/batch/download/{session_id}    — download one batch file
+    ├── GET  /api/batch/download-all/{batch_id}  — download ZIP of all completed files
+    ├── GET  /api/background-jobs                — all single + batch jobs
+    ├── GET  /api/queue                          — global job queue state
+    ├── GET  /api/templates                      — list templates
+    ├── POST /api/templates/{name}               — save template
+    ├── DELETE /api/templates/{name}             — delete template
+    ├── GET  /api/settings                       — load settings (backup_days)
+    ├── POST /api/settings                       — save settings
+    ├── GET  /api/storage/files                  — list persisted output files
+    ├── DELETE /api/storage/files/{id}           — delete one stored file
+    ├── DELETE /api/storage/files                — delete all stored files
+    ├── POST /api/storage/cleanup                — run retention cleanup manually
+    └── GET  /api/storage/download/{id}          — download a stored output file
 ```
+
+### Job Queue Architecture
+
+All jobs (single-file and batch) go through a **global sequential queue** (`backend/job_queue.py`):
+- A single daemon thread (`job-queue-worker`) processes one job at a time in submission order.
+- Within a batch, files run **serially** (file 2 starts only after file 1 completes).
+- Queue state is exposed via `GET /api/queue` and shown live on the Background Jobs page.
+- Jobs survive browser close — they continue running in the backend process.
 
 ### Data Flow
 
 ```
-[user uploads .xlsx/.csv]
-    → [FastAPI parses file, stores DataFrame in session_store (in-memory)]
-    → [user maps columns, configures steps in sidebar]
-    → [pipeline runs in background ThreadPoolExecutor]
-    → [frontend polls /api/pipeline-status every 2s for live progress]
-    → [Excel pre-generated after pipeline, cached in session]
-    → [user downloads qc_output.xlsx instantly]
-         └── new column headers highlighted in light purple (#B19CD9)
+[user lands on LandingScreen — chooses mode]
+    ↓
+[Single File mode]
+    → upload → session stored in session_store
+    → map columns → configure steps
+    → POST /api/run-pipeline → job enqueued in job_queue
+    → frontend polls /api/pipeline-status every 2s
+    → Excel cached in session + persisted to data/outputs/
+    → user downloads instantly; file available on Settings page
+
+[Batch mode]
+    → upload N files → N sessions created; batch_id returned
+    → map columns (first file used) → configure steps
+    → POST /api/batch/run → batch enqueued in job_queue
+    → files run serially inside the queue worker thread
+    → each file's Excel persisted to disk
+    → Download individual or Download All (ZIP)
+
+[Background Jobs page]
+    → polls /api/queue + /api/background-jobs every 2s
+    → "+ New Job" button → slide-in panel → upload → map → queue
+    → shows Queue section (waiting/running) + Single/Batch job cards
 ```
 
-Everything is in-memory — no files are read from or written to disk by the app.
+Files are persisted to `data/outputs/` and tracked in `data/file_registry.json`.
+Auto-cleanup runs on startup and every 24 h using the `backup_days` setting.
 
 ### Backend (`backend/`)
 
 | File | Role |
 |---|---|
-| `main.py` | FastAPI app, CORS, router registration under `/api` |
+| `main.py` | FastAPI app, CORS, router registration; startup cleanup + daily scheduler |
 | `session_store.py` | In-memory dict: UUID → `{df_original, df_working, original_columns, excel_bytes}` |
-| `job_store.py` | In-memory dict: UUID → `{status, step_index, total_steps, current_step, results, cancelled, ...}` |
-| `pipeline_executor.py` | Streamlit-free pipeline runner; `execute_pipeline()` accepts `progress_cb` + `cancel_check` |
-| `routers/upload.py` | `POST /api/upload` — 500 MB limit, NaN-safe JSON serialization, data quality stats |
-| `routers/pipeline.py` | Run / status / cancel endpoints; pre-generates Excel after pipeline completes |
+| `job_store.py` | In-memory dict: UUID → job progress; `list_jobs()`, `dismiss_job()` |
+| `job_queue.py` | Global sequential queue; single daemon worker thread; `enqueue()`, `mark_*()` |
+| `pipeline_executor.py` | Sequential pipeline runner; `execute_pipeline()` with `progress_cb` + `cancel_check` |
+| `file_store.py` | Persist Excel bytes to `data/outputs/`; registry at `data/file_registry.json` |
+| `settings_store.py` | Read/write `data/settings.json`; default `backup_days: 7` |
+| `routers/upload.py` | `POST /api/upload` — 500 MB limit, NaN-safe JSON, data quality stats |
+| `routers/pipeline.py` | Run / status / cancel; enqueues via `job_queue`; pre-generates Excel |
 | `routers/download.py` | `GET /api/download/{session_id}` — serves cached Excel bytes |
+| `routers/batch.py` | Batch upload / run (serial) / status / cancel / download / download-all |
+| `routers/background.py` | `GET /api/background-jobs`, `GET /api/queue`, dismiss endpoints |
+| `routers/templates.py` | CRUD for `instructions/templates/*.json` |
+| `routers/storage.py` | List / delete / download stored output files |
 
 Job status flow: `pending → running → preparing_download → done | error | cancelled`
 
@@ -144,14 +193,21 @@ Job status flow: `pending → running → preparing_download → done | error | 
 
 | File | Role |
 |---|---|
-| `App.jsx` | Root layout: resizable sidebar (desktop, drag handle) / drawer overlay (mobile, hamburger) + main tabs |
-| `api.js` | axios calls: `uploadFile` (with progress), `startPipeline`, `pollJobStatus`, `cancelPipeline`, `downloadUrl` |
-| `components/FileUpload.jsx` | Drag & drop upload; violet progress bar (0–99%); amber parsing spinner (100%) |
-| `components/ColumnMapper.jsx` | Auto-detect template or manual role→column mapping; phone columns multi-select |
-| `components/PipelineControls.jsx` | Step toggles with "All" master toggle, threshold sliders, Run/Running button |
-| `components/DataPreview.jsx` | Metrics row; Table View; Data Quality table; Column Explorer with bar chart |
-| `components/PipelineResults.jsx` | Step result cards; download button (spinner → green "Ready"); new columns summary table |
-| `components/PipelineAnalysis.jsx` | Overview metrics; value distribution deep dive; flag-value row browser |
+| `App.jsx` | Mode router: LandingScreen → Single / Batch / Templates / Settings / Background |
+| `api.js` | All axios calls: upload, pipeline, batch, templates, settings, storage, background, queue |
+| `components/LandingScreen.jsx` | Home screen with 4 mode cards + gear icon → Settings |
+| `components/FileUpload.jsx` | Drag & drop; violet progress bar (0–99%); amber parsing spinner (100%) |
+| `components/ColumnMapper.jsx` | Auto-detect template or manual role→column mapping; phone multi-select |
+| `components/PipelineControls.jsx` | Step toggles, threshold sliders, Run button; `hideRunButton` + `onConfigChange` props |
+| `components/DataPreview.jsx` | Metrics row; Table View; Data Quality table; Column Explorer + bar chart |
+| `components/PipelineResults.jsx` | Step cards; download button; new columns summary table |
+| `components/PipelineAnalysis.jsx` | Overview metrics; value distribution; flag-value row browser |
+| `components/BatchProcessor.jsx` | Multi-file upload; shared column mapping; run all; per-file status |
+| `components/BackgroundJobs.jsx` | Live queue section; single-file cards; batch dropdown; "+ New Job" button |
+| `components/NewJobPanel.jsx` | Slide-in drawer: type selector → file drop → ColumnMapper → PipelineControls → queue |
+| `components/TemplateManager.jsx` | View / create / edit column mapping templates |
+| `components/SettingsPage.jsx` | Backup retention slider; stored files list with delete; manual cleanup |
+| `components/InfoPanel.jsx` | Pipeline documentation overlay |
 
 ### Module Pattern
 
