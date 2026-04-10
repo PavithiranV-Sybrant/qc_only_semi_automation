@@ -1,5 +1,4 @@
 import io
-import concurrent.futures
 import openpyxl
 from openpyxl.styles import PatternFill
 from fastapi import APIRouter, HTTPException
@@ -10,9 +9,9 @@ from backend.session_store import get_session, update_session
 from backend.job_store import create_job, get_job, update_job
 from backend.pipeline_executor import execute_pipeline
 from backend.file_store import save_file as _persist_file
+from backend.executor_pool import pool as _pool
 
 router  = APIRouter()
-_pool   = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 _PURPLE = PatternFill(fill_type="solid", fgColor="B19CD9")
 
 
