@@ -113,9 +113,11 @@ Pipeline step toggles, column mappings, and thresholds are in `instructions/runn
     ├── POST /api/batch/upload                   — parse multi-file upload, create batch
     ├── POST /api/batch/run                      — enqueue batch job (files run serially)
     ├── GET  /api/batch/status/{batch_id}        — poll batch progress
-    ├── POST /api/batch/cancel/{batch_id}        — cancel batch
+    ├── POST /api/batch/cancel/{batch_id}        — cancel entire batch
+    ├── POST /api/batch/cancel-file/{batch_id}/{session_id} — cancel one file within batch
     ├── GET  /api/batch/download/{session_id}    — download one batch file
     ├── GET  /api/batch/download-all/{batch_id}  — download ZIP of all completed files
+    ├── GET  /api/sessions/{session_id}/columns  — return column names for a session
     ├── GET  /api/background-jobs                — all single + batch jobs
     ├── GET  /api/queue                          — global job queue state
     ├── GET  /api/templates                      — list templates
@@ -179,10 +181,10 @@ Auto-cleanup runs on startup and every 24 h using the `backup_days` setting.
 | `pipeline_executor.py` | Sequential pipeline runner; `execute_pipeline()` with `progress_cb` + `cancel_check` |
 | `file_store.py` | Persist Excel bytes to `data/outputs/`; registry at `data/file_registry.json` |
 | `settings_store.py` | Read/write `data/settings.json`; default `backup_days: 7` |
-| `routers/upload.py` | `POST /api/upload` — 500 MB limit, NaN-safe JSON, data quality stats |
+| `routers/upload.py` | `POST /api/upload` — 500 MB limit, NaN-safe JSON, data quality stats; `GET /api/sessions/{id}/columns` |
 | `routers/pipeline.py` | Run / status / cancel; enqueues via `job_queue`; pre-generates Excel |
 | `routers/download.py` | `GET /api/download/{session_id}` — serves cached Excel bytes |
-| `routers/batch.py` | Batch upload / run (serial) / status / cancel / download / download-all |
+| `routers/batch.py` | Batch upload / run (serial) / status / cancel / cancel-file / download / download-all; per-file `cancel_requested` flag |
 | `routers/background.py` | `GET /api/background-jobs`, `GET /api/queue`, dismiss endpoints |
 | `routers/templates.py` | CRUD for `instructions/templates/*.json` |
 | `routers/storage.py` | List / delete / download stored output files |
@@ -203,9 +205,9 @@ Job status flow: `pending → running → preparing_download → done | error | 
 | `components/PipelineResults.jsx` | Step cards; download button; new columns summary table |
 | `components/PipelineAnalysis.jsx` | Overview metrics; value distribution; flag-value row browser |
 | `components/BatchProcessor.jsx` | Multi-file upload; shared column mapping; run all; per-file status |
-| `components/BackgroundJobs.jsx` | Live queue section; single-file cards; batch dropdown; "+ New Job" button |
+| `components/BackgroundJobs.jsx` | Unified time-sorted job cards (singles + batches mixed); collapsible `JobCard`; cancel buttons per-job and per-file; "+ New Job" button |
 | `components/NewJobPanel.jsx` | Slide-in drawer: type selector → file drop → ColumnMapper → PipelineControls → queue |
-| `components/TemplateManager.jsx` | View / create / edit column mapping templates |
+| `components/TemplateManager.jsx` | View / create / edit column mapping templates; file drop on new template auto-fills column dropdowns |
 | `components/SettingsPage.jsx` | Backup retention slider; stored files list with delete; manual cleanup |
 | `components/InfoPanel.jsx` | Pipeline documentation overlay |
 
