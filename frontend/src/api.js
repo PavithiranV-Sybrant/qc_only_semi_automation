@@ -160,3 +160,52 @@ export async function dismissBatchJob(batchId) {
 export function batchDownloadAllUrl(batchId) {
   return `/api/batch/download-all/${batchId}`
 }
+
+// ── Final Output Templates ─────────────────────────────────────────────────
+
+export async function ftExtractHeaders(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await axios.post('/api/final-templates/extract-headers', form)
+  return data  // { columns: [{name, argb}] }
+}
+
+export async function ftListTemplates() {
+  const { data } = await axios.get('/api/final-templates')
+  return data  // [{name, comment, column_count, created_at}]
+}
+
+export async function ftGetTemplate(name) {
+  const { data } = await axios.get(`/api/final-templates/${name}`)
+  return data  // {name, comment, created_at, columns: [{name, argb}]}
+}
+
+export async function ftSaveTemplate(name, payload) {
+  // payload: { comment, columns: [{name, argb}] }
+  const { data } = await axios.post(`/api/final-templates/${name}`, payload)
+  return data
+}
+
+export async function ftDeleteTemplate(name) {
+  const { data } = await axios.delete(`/api/final-templates/${name}`)
+  return data
+}
+
+export async function ftCheckFile(file, templateName) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('template_name', templateName)
+  const { data } = await axios.post('/api/final-templates/check', form)
+  return data  // { overall_status, mappings, file_extra_cols }
+}
+
+export async function ftNormalizeDownload(file, templateName, mappings) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('template_name', templateName)
+  form.append('mapping_json', JSON.stringify(mappings))
+  const resp = await axios.post('/api/final-templates/normalize', form, {
+    responseType: 'blob',
+  })
+  return resp  // caller uses resp.data as the Blob for download
+}
