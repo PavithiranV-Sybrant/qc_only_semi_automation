@@ -60,7 +60,8 @@ git push origin v2.2.0
 | v2.1.0 | Employee count k-notation support (5k→5000) |
 | v2.1.1 | Sidebar UX tweaks, removed null% chart from Data Quality |
 | v2.2.0 | Fully responsive UI, mobile sidebar drawer, adaptive grids |
-| dev | Landing screen, Batch Processing, Template Manager, Settings, Background Jobs, persistent file storage, global sequential job queue, + New Job panel |
+| v4.0.0 | Landing screen, Batch Processing, Template Manager, Settings, Background Jobs, persistent file storage, global sequential job queue, + New Job panel |
+| v4.1.0 | Final Output Template Detection & Normalizer — capture golden Excel column order + header colors, check/normalize any file with auto-rename, reorder, fuzzy matching |
 
 ## Off-Limits
 
@@ -123,6 +124,13 @@ Pipeline step toggles, column mappings, and thresholds are in `instructions/runn
     ├── GET  /api/templates                      — list templates
     ├── POST /api/templates/{name}               — save template
     ├── DELETE /api/templates/{name}             — delete template
+    ├── POST /api/final-templates/extract-headers — upload golden .xlsx, return columns + ARGB colors
+    ├── POST /api/final-templates/check          — compare file columns vs final template
+    ├── POST /api/final-templates/normalize      — rearrange/rename/recolor columns, return .xlsx
+    ├── GET  /api/final-templates                — list final output templates
+    ├── GET  /api/final-templates/{name}         — get single final template
+    ├── POST /api/final-templates/{name}         — save final template
+    ├── DELETE /api/final-templates/{name}       — delete final template
     ├── GET  /api/settings                       — load settings (backup_days)
     ├── POST /api/settings                       — save settings
     ├── GET  /api/storage/files                  — list persisted output files
@@ -165,6 +173,14 @@ All jobs (single-file and batch) go through a **global sequential queue** (`back
     → polls /api/queue + /api/background-jobs every 2s
     → "+ New Job" button → slide-in panel → upload → map → queue
     → shows Queue section (waiting/running) + Single/Batch job cards
+
+[Output Normalizer mode]
+    → Create Template: upload golden .xlsx → extract-headers reads column order + ARGB colors
+      from xl/theme/theme1.xml (resolves theme colors) → save to instructions/final_templates/
+    → Check & Arrange: upload any file + select template → /check runs 3-pass matching
+      (exact → normalized e.g. "first name"→"first_name" → fuzzy ≥70%) → mapping review table
+      with per-row override dropdowns → /normalize rearranges columns, renames headers,
+      applies stored ARGB colors to header cells, returns .xlsx download
 ```
 
 Files are persisted to `data/outputs/` and tracked in `data/file_registry.json`.
@@ -188,6 +204,7 @@ Auto-cleanup runs on startup and every 24 h using the `backup_days` setting.
 | `routers/background.py` | `GET /api/background-jobs`, `GET /api/queue`, dismiss endpoints |
 | `routers/templates.py` | CRUD for `instructions/templates/*.json` |
 | `routers/storage.py` | List / delete / download stored output files |
+| `routers/final_output_templates.py` | Final Output Template CRUD + `extract-headers` (openpyxl + theme XML) + `check` (3-pass column matching) + `normalize` (reorder/rename/recolor → .xlsx) |
 
 Job status flow: `pending → running → preparing_download → done | error | cancelled`
 
@@ -195,9 +212,9 @@ Job status flow: `pending → running → preparing_download → done | error | 
 
 | File | Role |
 |---|---|
-| `App.jsx` | Mode router: LandingScreen → Single / Batch / Templates / Settings / Background |
-| `api.js` | All axios calls: upload, pipeline, batch, templates, settings, storage, background, queue |
-| `components/LandingScreen.jsx` | Home screen with 4 mode cards + gear icon → Settings |
+| `App.jsx` | Mode router: LandingScreen → Single / Batch / Templates / Settings / Background / FinalOutput |
+| `api.js` | All axios calls: upload, pipeline, batch, templates, settings, storage, background, queue, final-templates (`ft*` functions) |
+| `components/LandingScreen.jsx` | Home screen with 5 mode cards + gear icon → Settings |
 | `components/FileUpload.jsx` | Drag & drop; violet progress bar (0–99%); amber parsing spinner (100%) |
 | `components/ColumnMapper.jsx` | Auto-detect template or manual role→column mapping; phone multi-select |
 | `components/PipelineControls.jsx` | Step toggles, threshold sliders, Run button; `hideRunButton` + `onConfigChange` props |
@@ -208,6 +225,7 @@ Job status flow: `pending → running → preparing_download → done | error | 
 | `components/BackgroundJobs.jsx` | Unified time-sorted job cards (singles + batches mixed); collapsible `JobCard`; cancel buttons per-job and per-file; "+ New Job" button |
 | `components/NewJobPanel.jsx` | Slide-in drawer: type selector → file drop → ColumnMapper → PipelineControls → queue |
 | `components/TemplateManager.jsx` | View / create / edit column mapping templates; file drop on new template auto-fills column dropdowns |
+| `components/FinalOutputTemplateManager.jsx` | Output Normalizer — two sub-modes: Create Template (upload golden .xlsx, capture column order + ARGB colors, save) and Check & Arrange (upload file, select template, mapping review table with overrides, normalize & download) |
 | `components/SettingsPage.jsx` | Backup retention slider; stored files list with delete; manual cleanup |
 | `components/InfoPanel.jsx` | Pipeline documentation overlay |
 
@@ -263,6 +281,7 @@ Every module in `functions_qc/` follows the same contract:
 - `naic_sic_code_mapping/sic_naics_code.json` — SIC → NAICS mapping
 - `instructions/runner_config.json` — column name mappings, step toggles, thresholds
 - `instructions/templates/<name>.json` — per-template column overrides: `manta_database.json`, `healthcare.json`
+- `instructions/final_templates/<name>.json` — final output templates: ordered `columns` array with `{name, argb}` per column; ARGB resolved from source file's theme XML
 
 ### String Normalization Convention
 
