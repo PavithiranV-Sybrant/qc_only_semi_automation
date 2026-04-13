@@ -27,6 +27,13 @@ const MODES = [
     desc:  'View, create, and edit column mapping templates that define how roles map to your data source columns.',
     badge: null,
   },
+  {
+    id:    'final-output',
+    icon:  '🎯',
+    title: 'Output Normalizer',
+    desc:  'Capture a golden output template with header colors, then check and normalize any file to match it exactly.',
+    badge: 'Final QC',
+  },
 ]
 
 export default function LandingScreen({ onSelect }) {

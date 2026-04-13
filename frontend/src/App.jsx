@@ -12,6 +12,7 @@ import TemplateManager  from './components/TemplateManager'
 import BatchProcessor   from './components/BatchProcessor'
 import SettingsPage     from './components/SettingsPage'
 import BackgroundJobs   from './components/BackgroundJobs'
+import FinalOutputTemplateManager from './components/FinalOutputTemplateManager'
 import './index.css'
 
 const TABS = [
@@ -183,7 +184,8 @@ export default function App() {
   if (currentMode === 'templates') return <TemplateManager onBack={() => setCurrentMode(null)} />
   if (currentMode === 'batch')     return <BatchProcessor  onBack={() => setCurrentMode(null)} />
   if (currentMode === 'settings')   return <SettingsPage    onBack={() => setCurrentMode(null)} />
-  if (currentMode === 'background') return <BackgroundJobs  onBack={() => setCurrentMode(null)} />
+  if (currentMode === 'background')   return <BackgroundJobs             onBack={() => setCurrentMode(null)} />
+  if (currentMode === 'final-output') return <FinalOutputTemplateManager onBack={() => setCurrentMode(null)} />
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">

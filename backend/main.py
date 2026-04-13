@@ -4,7 +4,7 @@ import time
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import upload, pipeline, download, templates, batch, storage, background
+from backend.routers import upload, pipeline, download, templates, batch, storage, background, final_output_templates
 
 app = FastAPI(title="QC Automation API", version="2.0.0")
 
@@ -23,6 +23,7 @@ app.include_router(templates.router, prefix="/api")
 app.include_router(batch.router,    prefix="/api")
 app.include_router(storage.router,    prefix="/api")
 app.include_router(background.router, prefix="/api")
+app.include_router(final_output_templates.router, prefix="/api")
 
 
 # ─── startup cleanup + daily scheduler ───────────────────────────────────────
