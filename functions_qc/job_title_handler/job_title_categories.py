@@ -37,7 +37,7 @@ def _categorize(title) -> str:
         return "Director"
     if "chief" in words or bool(words & _C_SUITE):
         return "C-Suite"
-    if "vp" in words or "svp" in words or "vice president" in t or "vicepresident" in t_compact:
+    if "vp" in words or "svp" in words or "evp" in words or "vice president" in t or "vicepresident" in t_compact:
         return "VP"
     if "head" in t or "head" in t_compact:
         return "Head"
