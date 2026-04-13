@@ -2,6 +2,8 @@ import io
 import json
 import math
 import re
+import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -43,13 +45,69 @@ def _normalize(name: str) -> str:
     return s.strip("_")
 
 
-def _extract_argb(fg_color) -> str:
-    """Extract ARGB string from an openpyxl fgColor object."""
+def _read_theme_colors(excel_bytes: bytes) -> dict[int, str]:
+    """
+    Read the theme color scheme from an .xlsx file (which is a ZIP).
+    Returns {theme_index: RRGGBB_hex} for indices 0–11.
+    Theme index order in <a:clrScheme>: dk1, lt1, dk2, lt2, accent1..accent6, hlink, folHlink.
+    """
+    theme_colors: dict[int, str] = {}
+    try:
+        with zipfile.ZipFile(io.BytesIO(excel_bytes)) as z:
+            theme_files = [n for n in z.namelist() if re.match(r'xl/theme/theme\d*\.xml', n)]
+            if not theme_files:
+                return theme_colors
+            theme_xml = z.read(theme_files[0])
+        root = ET.fromstring(theme_xml)
+        ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+        clr_scheme = root.find(".//a:clrScheme", ns)
+        if clr_scheme is None:
+            return theme_colors
+        for idx, child in enumerate(clr_scheme):
+            for color_elem in child:
+                tag = color_elem.tag.split("}")[-1]
+                if tag == "srgbClr":
+                    theme_colors[idx] = color_elem.get("val", "").upper()
+                elif tag == "sysClr":
+                    theme_colors[idx] = color_elem.get("lastClr", "").upper()
+    except Exception:
+        pass
+    return theme_colors
+
+
+def _apply_tint(hex_rgb: str, tint: float) -> str:
+    """Apply Excel tint (-1 darken … 0 base … +1 lighten) to an RRGGBB hex string."""
+    if not hex_rgb or len(hex_rgb) < 6:
+        return hex_rgb
+    try:
+        r, g, b = int(hex_rgb[0:2], 16), int(hex_rgb[2:4], 16), int(hex_rgb[4:6], 16)
+        if tint < 0:
+            factor = 1 + tint          # darken: multiply toward 0
+            r, g, b = int(r * factor), int(g * factor), int(b * factor)
+        elif tint > 0:
+            r = int(r + (255 - r) * tint)   # lighten: interpolate toward 255
+            g = int(g + (255 - g) * tint)
+            b = int(b + (255 - b) * tint)
+        return f"{min(r,255):02X}{min(g,255):02X}{min(b,255):02X}"
+    except Exception:
+        return hex_rgb
+
+
+def _resolve_argb(fg_color, theme_colors: dict[int, str]) -> str:
+    """
+    Resolve an openpyxl fgColor to a proper 8-char ARGB hex string.
+    Theme colors are looked up from the workbook theme and tints are applied.
+    """
     try:
         if fg_color.type == "rgb":
-            return fg_color.rgb          # e.g. "FF00B0F0"
+            return fg_color.rgb                         # already "FFRRGGBB"
         elif fg_color.type == "theme":
-            return f"theme:{fg_color.theme}"
+            base_rgb = theme_colors.get(fg_color.theme, "")
+            if not base_rgb:
+                return f"theme:{fg_color.theme}"        # fallback if theme unresolved
+            tint = float(getattr(fg_color, "tint", 0) or 0)
+            resolved = _apply_tint(base_rgb, tint) if tint != 0.0 else base_rgb
+            return f"FF{resolved}"                      # prepend FF = fully opaque
         elif fg_color.type == "indexed":
             return f"indexed:{fg_color.indexed}"
     except Exception:
@@ -88,6 +146,9 @@ async def extract_headers(file: UploadFile = File(...)):
         raise HTTPException(413, "File too large (max 500 MB).")
 
     try:
+        # Read theme colors first (Excel files are ZIP archives)
+        theme_colors = _read_theme_colors(content)
+
         wb = openpyxl.load_workbook(io.BytesIO(content), read_only=False, data_only=True)
         ws = wb.active
         header_row = next(ws.iter_rows(min_row=1, max_row=1), None)
@@ -98,7 +159,7 @@ async def extract_headers(file: UploadFile = File(...)):
             val = cell.value
             if val is None or str(val).strip() == "":
                 continue
-            argb = _extract_argb(cell.fill.fgColor)
+            argb = _resolve_argb(cell.fill.fgColor, theme_colors)
             columns.append({"name": str(val), "argb": argb})
     except HTTPException:
         raise
