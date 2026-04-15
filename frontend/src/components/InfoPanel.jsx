@@ -130,6 +130,18 @@ const SECTIONS = [
     ],
   },
   {
+    title: "Facebook",
+    steps: [
+      {
+        name: "Facebook Name Match",
+        step: "Step 17",
+        description: "Fuzzy-matches the contact's first and last name against (1) the personal slug in their Facebook profile URL (e.g. 'john.smith' from facebook.com/john.smith) and (2) any extra text columns mapped as Facebook Link Text 1 or Facebook Description 1. A row is labelled matched if any source produces a match. Configurable similarity threshold via slider (0–1).",
+        needs: "First Name, Last Name (Middle Name optional) + at least one of: Facebook URL, Facebook Link Text 1, Facebook Description 1",
+        creates: "comments_facebook_match (matched / not matched / invalid)",
+      },
+    ],
+  },
+  {
     title: "LinkedIn & Job Title",
     steps: [
       {

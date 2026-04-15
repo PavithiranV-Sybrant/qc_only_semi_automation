@@ -19,13 +19,17 @@
         "sic_code":         "SIC code",
         "link_text":           "Link Text",
         "description":         "Des",
-        "unique_identifier":   ""
+        "unique_identifier":      "",
+        "facebook":               "",
+        "facebook_link_text":     "",
+        "facebook_description":   ""
     },
 
     "thresholds": {
         "name_email_fuzzy": 80,
         "linkedin_fuzzy":   0.5,
-        "link_text_fuzzy":  85
+        "link_text_fuzzy":  85,
+        "facebook_fuzzy":   0.5
     },
 
     "steps": {
@@ -44,6 +48,7 @@
         "job_title_categories":      true,
         "sic_code_naics":            true,
         "link_text_match":           true,
-        "unique_identifier_check":   false
+        "unique_identifier_check":   false,
+        "facebook_match":            true
     }
 }
