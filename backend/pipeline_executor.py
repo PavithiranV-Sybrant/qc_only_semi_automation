@@ -22,6 +22,7 @@ from functions_qc.job_title_handler.job_title_categories           import catego
 from functions_qc.sic_code_naics_handler.sic_naics_handler         import process_sic_naics
 from functions_qc.link_text_handler.link_text_match                import match_link_text_fields
 from functions_qc.unique_identifier_handler.unique_identifier_check import check_unique_identifier
+from functions_qc.facebook_handler.facebook_match                  import verify_facebook_profile_match
 
 _CONFIG_PATH = Path(__file__).parent.parent / "instructions" / "runner_config.json"
 
@@ -42,6 +43,7 @@ STEP_LABELS = {
     "sic_code_naics":            "14. SIC → NAICS mapping",
     "link_text_match":           "15. Link text / Description match",
     "unique_identifier_check":   "16. Unique identifier check",
+    "facebook_match":            "17. Facebook name match",
 }
 
 
@@ -110,6 +112,9 @@ def _build_steps(df, cols, toggles, thresholds):
     lt   = cols.get("link_text")
     desc = cols.get("description")
     uid  = cols.get("unique_identifier")
+    fb   = cols.get("facebook")
+    fb_lt  = cols.get("facebook_link_text")
+    fb_desc = cols.get("facebook_description")
     ph   = cols.get("phone_columns", [])
 
     def has(*c): return all(x and x in df.columns for x in c)
@@ -205,6 +210,17 @@ def _build_steps(df, cols, toggles, thresholds):
         steps.append({"name": "unique_identifier_check", "label": STEP_LABELS["unique_identifier_check"],
                       "func": check_unique_identifier,
                       "kwargs": {"unique_id_col": uid}})
+
+    fb_extra = [c for c in [fb_lt, fb_desc] if c and c in df.columns]
+    fb_ok = (fb and fb in df.columns) or bool(fb_extra)
+    if toggles.get("facebook_match", True) and has(fn, ln) and fb_ok:
+        steps.append({"name": "facebook_match", "label": STEP_LABELS["facebook_match"],
+                      "func": verify_facebook_profile_match,
+                      "kwargs": {"first_name_col": fn, "last_name_col": ln,
+                                 "middle_name_col": mn,
+                                 "facebook_col": fb if (fb and fb in df.columns) else None,
+                                 "extra_cols": fb_extra,
+                                 "threshold": thresholds.get("facebook_fuzzy", 0.5)}})
 
     return steps
 

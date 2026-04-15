@@ -4,7 +4,7 @@ import { getConfig } from '../api'
 export default function PipelineControls({ onRun, loading, mappingApplied, onConfigChange, hideRunButton }) {
   const [stepLabels, setStepLabels] = useState({})
   const [toggles, setToggles]       = useState({})
-  const [thresholds, setThresholds] = useState({ name_email_fuzzy: 80, linkedin_fuzzy: 0.5, link_text_fuzzy: 85 })
+  const [thresholds, setThresholds] = useState({ name_email_fuzzy: 80, linkedin_fuzzy: 0.5, link_text_fuzzy: 85, facebook_fuzzy: 0.5 })
   const [allOn, setAllOn]           = useState(true)
 
   useEffect(() => {
@@ -90,6 +90,15 @@ export default function PipelineControls({ onRun, loading, mappingApplied, onCon
           </div>
           <input type="range" min={0} max={100} value={thresholds.link_text_fuzzy}
             onChange={e => setThresholds(p => ({ ...p, link_text_fuzzy: +e.target.value }))}
+            className="w-full accent-violet-600" />
+        </div>
+        <div>
+          <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <span>Facebook fuzzy</span>
+            <span className="font-medium text-gray-700">{thresholds.facebook_fuzzy.toFixed(2)}</span>
+          </div>
+          <input type="range" min={0} max={1} step={0.05} value={thresholds.facebook_fuzzy}
+            onChange={e => setThresholds(p => ({ ...p, facebook_fuzzy: +e.target.value }))}
             className="w-full accent-violet-600" />
         </div>
       </div>
