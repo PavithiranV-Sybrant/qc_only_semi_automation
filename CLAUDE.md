@@ -63,6 +63,7 @@ git push origin v2.2.0
 | v4.0.0 | Landing screen, Batch Processing, Template Manager, Settings, Background Jobs, persistent file storage, global sequential job queue, + New Job panel |
 | v4.1.0 | Final Output Template Detection & Normalizer — capture golden Excel column order + header colors, check/normalize any file with auto-rename, reorder, fuzzy matching |
 | v4.2.0 | Step 15 Link Text / Description match — fuzzy match link text + description fields against company name and contact name; rapidfuzz dependency |
+| v4.2.1 | Step 16 Unique Identifier Check (default OFF) — labels each row Unique/Duplicate; Step 17 Facebook Name Match — fuzzy match name vs Facebook URL slug + extra text fields (link_text1, description1) |
 
 ## Off-Limits
 

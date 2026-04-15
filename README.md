@@ -2,7 +2,7 @@
 
 A React + FastAPI web application for validating and enriching business contact data in Excel and CSV files. Each QC step adds new comment columns to flag issues — source data is never modified. New columns are highlighted in purple in the output.
 
-> **Current version: v4.1.0**
+> **Current version: v4.2.1**
 
 ---
 
@@ -136,3 +136,4 @@ Only Python and Node.js need to be pre-installed.
 | v4.0.0 | Batch Processing, Background Jobs, Template Manager, Settings, persistent storage, global job queue |
 | v4.1.0 | Output Normalizer — final output template detection & normalization with Excel header color capture |
 | v4.2.0 | Step 15 Link Text / Description match — fuzzy match link text + description against company and contact name |
+| v4.2.1 | Step 16 Unique Identifier Check (default OFF) + Step 17 Facebook Name Match with URL slug and extra text field matching |
