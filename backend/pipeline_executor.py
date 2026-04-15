@@ -20,6 +20,7 @@ from functions_qc.linkedin_handler.name_linkedin_fuzzy_match       import verify
 from functions_qc.primary_industry.primary_industry_split_using_graterthen_greater_then import extract_primary_industry
 from functions_qc.job_title_handler.job_title_categories           import categorize_job_titles
 from functions_qc.sic_code_naics_handler.sic_naics_handler         import process_sic_naics
+from functions_qc.link_text_handler.link_text_match                import match_link_text_fields
 
 _CONFIG_PATH = Path(__file__).parent.parent / "instructions" / "runner_config.json"
 
@@ -38,6 +39,7 @@ STEP_LABELS = {
     "extract_primary_industry":  "12. Extract primary industry",
     "job_title_categories":      "13. Job title categorization",
     "sic_code_naics":            "14. SIC → NAICS mapping",
+    "link_text_match":           "15. Link text / Description match",
 }
 
 
@@ -102,8 +104,10 @@ def _build_steps(df, cols, toggles, thresholds):
     li  = cols.get("linkedin")
     pi  = cols.get("primary_industry")
     jt  = cols.get("job_title")
-    sic = cols.get("sic_code")
-    ph  = cols.get("phone_columns", [])
+    sic  = cols.get("sic_code")
+    lt   = cols.get("link_text")
+    desc = cols.get("description")
+    ph   = cols.get("phone_columns", [])
 
     def has(*c): return all(x and x in df.columns for x in c)
 
@@ -183,6 +187,16 @@ def _build_steps(df, cols, toggles, thresholds):
     if toggles.get("sic_code_naics", True) and has(sic):
         steps.append({"name": "sic_code_naics", "label": STEP_LABELS["sic_code_naics"],
                       "func": process_sic_naics, "kwargs": {"sic_code_col": sic}})
+
+    name_ok = has(fln) or has(fn, ln)
+    if toggles.get("link_text_match", True) and name_ok and has(co, lt, desc):
+        steps.append({"name": "link_text_match", "label": STEP_LABELS["link_text_match"],
+                      "func": match_link_text_fields,
+                      "kwargs": {"company_col": co, "link_text_col": lt,
+                                 "description_col": desc, "full_name_col": fln,
+                                 "first_name_col": fn, "last_name_col": ln,
+                                 "middle_name_col": mn,
+                                 "fuzzy_threshold": thresholds.get("link_text_fuzzy", 85)}})
 
     return steps
 

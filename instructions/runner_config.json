@@ -16,12 +16,15 @@
         "linkedin":         "Person LinkedIn",
         "primary_industry": "Trade Name",
         "job_title":        "Job Title",
-        "sic_code":         "SIC code"
+        "sic_code":         "SIC code",
+        "link_text":        "Link Text",
+        "description":      "Des"
     },
 
     "thresholds": {
         "name_email_fuzzy": 80,
-        "linkedin_fuzzy":   0.5
+        "linkedin_fuzzy":   0.5,
+        "link_text_fuzzy":  85
     },
 
     "steps": {
@@ -38,6 +41,7 @@
         "name_linkedin_fuzzy_match": true,
         "extract_primary_industry":  true,
         "job_title_categories":      true,
-        "sic_code_naics":            true
+        "sic_code_naics":            true,
+        "link_text_match":           true
     }
 }
