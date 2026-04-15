@@ -61,7 +61,7 @@ Configure backup retention (1–90 days) for stored output files. View, download
 
 ---
 
-## QC Pipeline Steps (14 total)
+## QC Pipeline Steps (15 total)
 
 | # | Step | Default | What it checks |
 |---|---|---|---|
@@ -79,6 +79,7 @@ Configure backup retention (1–90 days) for stored output files. View, download
 | 12 | Primary Industry | ON | Extracts primary industry from `>`-delimited trade name string |
 | 13 | Job Title Category | ON | Categorizes titles: Founder / C-Suite / VP / Director / etc. |
 | 14 | SIC → NAICS | ON | Maps SIC codes to NAICS codes |
+| 15 | Link Text / Description Match | ON | Fuzzy-matches link text and description fields against company name and contact name (threshold slider) |
 
 ---
 
@@ -134,3 +135,4 @@ Only Python and Node.js need to be pre-installed.
 | v2.2.0 | Fully responsive UI, mobile sidebar |
 | v4.0.0 | Batch Processing, Background Jobs, Template Manager, Settings, persistent storage, global job queue |
 | v4.1.0 | Output Normalizer — final output template detection & normalization with Excel header color capture |
+| v4.2.0 | Step 15 Link Text / Description match — fuzzy match link text + description against company and contact name |

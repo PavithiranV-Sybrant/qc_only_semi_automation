@@ -62,6 +62,7 @@ git push origin v2.2.0
 | v2.2.0 | Fully responsive UI, mobile sidebar drawer, adaptive grids |
 | v4.0.0 | Landing screen, Batch Processing, Template Manager, Settings, Background Jobs, persistent file storage, global sequential job queue, + New Job panel |
 | v4.1.0 | Final Output Template Detection & Normalizer — capture golden Excel column order + header colors, check/normalize any file with auto-rename, reorder, fuzzy matching |
+| v4.2.0 | Step 15 Link Text / Description match — fuzzy match link text + description fields against company name and contact name; rapidfuzz dependency |
 
 ## Off-Limits
 
@@ -259,6 +260,7 @@ Every module in `functions_qc/` follows the same contract:
 | `extract_primary_industry` | Extract 3rd element from `>` delimited string | ON |
 | `job_title_categories` | Categorize: Founder / C-Suite / VP / Director / etc. | ON |
 | `sic_code_naics` | SIC → NAICS mapping | ON |
+| `link_text_match` | Link text / description fuzzy match vs company + contact name (threshold slider, default 85%) | ON |
 
 ### Functional Domains
 
@@ -272,6 +274,7 @@ Every module in `functions_qc/` follows the same contract:
 | `job_title_handler/` | Job title categorization |
 | `sic_code_naics_handler/` | SIC → NAICS via `naic_sic_code_mapping/sic_naics_code.json` |
 | `primary_industry/` | Split by `>`, extract 3rd element |
+| `link_text_handler/` | Fuzzy match link text + description fields against company name and contact name (rapidfuzz) |
 
 > Note: `email_handling/special_charactors_appeared.py` and `functions_qc/bulk_column_remove/` exist on disk but are not wired into the pipeline.
 
