@@ -17,8 +17,9 @@
         "primary_industry": "Trade Name",
         "job_title":        "Job Title",
         "sic_code":         "SIC code",
-        "link_text":        "Link Text",
-        "description":      "Des"
+        "link_text":           "Link Text",
+        "description":         "Des",
+        "unique_identifier":   ""
     },
 
     "thresholds": {
@@ -42,6 +43,7 @@
         "extract_primary_industry":  true,
         "job_title_categories":      true,
         "sic_code_naics":            true,
-        "link_text_match":           true
+        "link_text_match":           true,
+        "unique_identifier_check":   false
     }
 }

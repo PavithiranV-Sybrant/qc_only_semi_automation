@@ -21,6 +21,7 @@ from functions_qc.primary_industry.primary_industry_split_using_graterthen_great
 from functions_qc.job_title_handler.job_title_categories           import categorize_job_titles
 from functions_qc.sic_code_naics_handler.sic_naics_handler         import process_sic_naics
 from functions_qc.link_text_handler.link_text_match                import match_link_text_fields
+from functions_qc.unique_identifier_handler.unique_identifier_check import check_unique_identifier
 
 _CONFIG_PATH = Path(__file__).parent.parent / "instructions" / "runner_config.json"
 
@@ -40,6 +41,7 @@ STEP_LABELS = {
     "job_title_categories":      "13. Job title categorization",
     "sic_code_naics":            "14. SIC → NAICS mapping",
     "link_text_match":           "15. Link text / Description match",
+    "unique_identifier_check":   "16. Unique identifier check",
 }
 
 
@@ -107,6 +109,7 @@ def _build_steps(df, cols, toggles, thresholds):
     sic  = cols.get("sic_code")
     lt   = cols.get("link_text")
     desc = cols.get("description")
+    uid  = cols.get("unique_identifier")
     ph   = cols.get("phone_columns", [])
 
     def has(*c): return all(x and x in df.columns for x in c)
@@ -197,6 +200,11 @@ def _build_steps(df, cols, toggles, thresholds):
                                  "first_name_col": fn, "last_name_col": ln,
                                  "middle_name_col": mn,
                                  "fuzzy_threshold": thresholds.get("link_text_fuzzy", 85)}})
+
+    if toggles.get("unique_identifier_check", False) and has(uid):
+        steps.append({"name": "unique_identifier_check", "label": STEP_LABELS["unique_identifier_check"],
+                      "func": check_unique_identifier,
+                      "kwargs": {"unique_id_col": uid}})
 
     return steps
 

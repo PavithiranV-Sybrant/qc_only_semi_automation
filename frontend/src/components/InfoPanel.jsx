@@ -117,6 +117,19 @@ const SECTIONS = [
     ],
   },
   {
+    title: "Record Identity",
+    steps: [
+      {
+        name: "Unique Identifier Check",
+        step: "Step 16",
+        defaultOff: true,
+        description: "Checks whether every value in the Unique Identifier column is unique across all rows. Blank / empty values are skipped.",
+        needs: "Unique Identifier column",
+        creates: "Comments_unique_identifier_verifier (Unique / Duplicate)",
+      },
+    ],
+  },
+  {
     title: "LinkedIn & Job Title",
     steps: [
       {
