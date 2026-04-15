@@ -14,6 +14,8 @@ const ROLES = [
   ['primary_industry', 'Primary Industry'],
   ['job_title',        'Job Title'],
   ['sic_code',         'SIC Code'],
+  ['link_text',        'Link Text'],
+  ['description',      'Description'],
 ]
 
 export default function ColumnMapper({ columns, onMappingChange }) {
