@@ -105,6 +105,18 @@ const SECTIONS = [
     ],
   },
   {
+    title: "Link Text & Description",
+    steps: [
+      {
+        name: "Link Text / Description Match",
+        step: "Step 15",
+        description: "Matches the contact's name and company name against the Link Text and Description fields using both exact word matching and fuzzy matching (rapidfuzz). Exact match scores words token-by-token; fuzzy match uses a configurable similarity threshold slider (0–100, default 85). Each pair produces a label: Matched, Most_matched (≥75% words matched), Partial_match, or Not_match.",
+        needs: "Company, Link Text, Description, and Name columns (Full Name or First + Last)",
+        creates: "comments_name_link_exact, comments_name_link_fuzzy, comments_company_link_exact, comments_company_link_fuzzy, comments_company_desc_exact, comments_company_desc_fuzzy",
+      },
+    ],
+  },
+  {
     title: "LinkedIn & Job Title",
     steps: [
       {
