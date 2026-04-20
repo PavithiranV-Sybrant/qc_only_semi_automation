@@ -64,6 +64,7 @@ git push origin v2.2.0
 | v4.1.0 | Final Output Template Detection & Normalizer — capture golden Excel column order + header colors, check/normalize any file with auto-rename, reorder, fuzzy matching |
 | v4.2.0 | Step 15 Link Text / Description match — fuzzy match link text + description fields against company name and contact name; rapidfuzz dependency |
 | v4.2.1 | Step 16 Unique Identifier Check (default OFF) — labels each row Unique/Duplicate; Step 17 Facebook Name Match — fuzzy match name vs Facebook URL slug + extra text fields (link_text1, description1) |
+| v4.3.0 | Fully Autonomous Agent — LLM (Groq) reads column headers + sample rows, auto-maps every column role and selects pipeline steps; review/override UI with confidence score + AI reasoning; LLM Configuration in Settings (provider, API key manager with show/hide/edit, model selector, test connection); rate-limit retry with exponential back-off |
 
 ## Off-Limits
 

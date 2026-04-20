@@ -8,7 +8,10 @@ _DATA_DIR     = Path(__file__).parent.parent / "data"
 _SETTINGS_FILE = _DATA_DIR / "settings.json"
 
 DEFAULTS: dict = {
-    "backup_days": 7,
+    "backup_days":    7,
+    "llm_provider":   "groq",
+    "llm_api_key":    "",
+    "llm_model":      "llama-3.3-70b-versatile",
 }
 
 

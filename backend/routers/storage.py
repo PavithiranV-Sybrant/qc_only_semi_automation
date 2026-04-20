@@ -18,6 +18,12 @@ class SettingsPayload(BaseModel):
     backup_days: int = Field(..., ge=1, le=365)
 
 
+class LLMSettingsPayload(BaseModel):
+    llm_provider: str = "groq"
+    llm_api_key:  str = ""
+    llm_model:    str = "llama-3.3-70b-versatile"
+
+
 @router.get("/settings")
 def get_settings():
     return load_settings()
@@ -26,6 +32,25 @@ def get_settings():
 @router.post("/settings")
 def update_settings(payload: SettingsPayload):
     return save_settings({"backup_days": payload.backup_days})
+
+
+@router.get("/llm-settings")
+def get_llm_settings():
+    s = load_settings()
+    return {
+        "llm_provider": s.get("llm_provider", "groq"),
+        "llm_api_key":  s.get("llm_api_key",  ""),
+        "llm_model":    s.get("llm_model",     "llama-3.3-70b-versatile"),
+    }
+
+
+@router.post("/llm-settings")
+def update_llm_settings(payload: LLMSettingsPayload):
+    return save_settings({
+        "llm_provider": payload.llm_provider,
+        "llm_api_key":  payload.llm_api_key,
+        "llm_model":    payload.llm_model,
+    })
 
 
 # ─── file history ─────────────────────────────────────────────────────────────

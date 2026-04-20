@@ -1,5 +1,13 @@
 const MODES = [
   {
+    id:    'autonomous',
+    icon:  '🤖',
+    title: 'Fully Autonomous Agent',
+    desc:  'Upload your file and let the AI automatically map columns, select the right QC steps, and run the pipeline — zero manual configuration.',
+    badge: 'AI',
+    highlight: true,
+  },
+  {
     id:    'single',
     icon:  '📄',
     title: 'Single File',
@@ -67,30 +75,40 @@ export default function LandingScreen({ onSelect }) {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 w-full max-w-5xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 w-full max-w-5xl">
           {MODES.map(m => (
             <button
               key={m.id}
               onClick={() => onSelect(m.id)}
-              className="group bg-white border-2 border-gray-200 hover:border-violet-500 hover:shadow-xl
-                         rounded-2xl p-8 text-left transition-all duration-200 relative overflow-hidden"
+              className={`group border-2 rounded-2xl p-8 text-left transition-all duration-200 relative overflow-hidden
+                ${m.highlight
+                  ? 'bg-violet-600 border-violet-600 hover:bg-violet-700 hover:border-violet-700 hover:shadow-2xl'
+                  : 'bg-white border-gray-200 hover:border-violet-500 hover:shadow-xl'}`}
             >
-              {/* hover accent bar */}
-              <div className="absolute inset-x-0 top-0 h-1 bg-violet-600 scale-x-0 group-hover:scale-x-100 transition-transform duration-200 origin-left rounded-t-2xl" />
+              {/* hover accent bar (non-highlight cards only) */}
+              {!m.highlight && (
+                <div className="absolute inset-x-0 top-0 h-1 bg-violet-600 scale-x-0 group-hover:scale-x-100 transition-transform duration-200 origin-left rounded-t-2xl" />
+              )}
 
               {m.badge && (
-                <span className="absolute top-4 right-4 text-xs font-semibold bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
+                <span className={`absolute top-4 right-4 text-xs font-semibold px-2 py-0.5 rounded-full
+                  ${m.highlight ? 'bg-white/20 text-white' : 'bg-violet-100 text-violet-700'}`}>
                   {m.badge}
                 </span>
               )}
 
               <div className="text-5xl mb-5">{m.icon}</div>
-              <h3 className="text-lg font-bold text-gray-800 group-hover:text-violet-700 mb-2 transition-colors">
+              <h3 className={`text-lg font-bold mb-2 transition-colors
+                ${m.highlight ? 'text-white' : 'text-gray-800 group-hover:text-violet-700'}`}>
                 {m.title}
               </h3>
-              <p className="text-sm text-gray-500 leading-relaxed">{m.desc}</p>
+              <p className={`text-sm leading-relaxed
+                ${m.highlight ? 'text-violet-100' : 'text-gray-500'}`}>
+                {m.desc}
+              </p>
 
-              <div className="mt-6 flex items-center text-xs font-semibold text-violet-600 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className={`mt-6 flex items-center text-xs font-semibold transition-opacity
+                ${m.highlight ? 'text-white opacity-80 group-hover:opacity-100' : 'text-violet-600 opacity-0 group-hover:opacity-100'}`}>
                 Get started
                 <svg className="ml-1 w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

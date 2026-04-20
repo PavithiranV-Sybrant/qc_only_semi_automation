@@ -161,6 +161,35 @@ export function batchDownloadAllUrl(batchId) {
   return `/api/batch/download-all/${batchId}`
 }
 
+// ── LLM Settings ──────────────────────────────────────────────────────────
+
+export async function getLLMSettings() {
+  const { data } = await axios.get('/api/llm-settings')
+  return data
+}
+
+export async function saveLLMSettings(payload) {
+  const { data } = await axios.post('/api/llm-settings', payload)
+  return data
+}
+
+// ── Autonomous Agent ───────────────────────────────────────────────────────
+
+export async function autonomousAnalyze(sessionId) {
+  const { data } = await axios.post('/api/autonomous/analyze', { session_id: sessionId })
+  return data
+}
+
+export async function testLLMConnection() {
+  const { data } = await axios.post('/api/autonomous/test-connection')
+  return data
+}
+
+export async function listLLMModels() {
+  const { data } = await axios.get('/api/autonomous/models')
+  return data
+}
+
 // ── Final Output Templates ─────────────────────────────────────────────────
 
 export async function ftExtractHeaders(file) {

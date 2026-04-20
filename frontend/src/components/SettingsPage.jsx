@@ -3,6 +3,7 @@ import {
   getSettings, saveSettings,
   listStoredFiles, deleteStoredFile, deleteAllStoredFiles, runCleanup,
   storedFileDownloadUrl,
+  getLLMSettings, saveLLMSettings, testLLMConnection, listLLMModels,
 } from '../api'
 
 function fmtSize(bytes) {
@@ -41,6 +42,19 @@ export default function SettingsPage({ onBack }) {
   const [deletingAll,    setDeletingAll]    = useState(false)
   const [msg,            setMsg]            = useState(null)  // { type:'ok'|'err', text }
 
+  // ── LLM settings state ────────────────────────────────────────────────────
+  const [llmProvider,   setLlmProvider]   = useState('groq')
+  const [llmApiKey,     setLlmApiKey]     = useState('')
+  const [llmModel,      setLlmModel]      = useState('llama-3.3-70b-versatile')
+  const [llmModels,     setLlmModels]     = useState([])
+  const [showKey,       setShowKey]       = useState(false)
+  const [editingKey,    setEditingKey]    = useState(false)
+  const [keyDraft,      setKeyDraft]      = useState('')
+  const [savingLLM,     setSavingLLM]     = useState(false)
+  const [testingConn,   setTestingConn]   = useState(false)
+  const [connStatus,    setConnStatus]    = useState(null)  // null | 'ok' | 'err'
+  const [connMsg,       setConnMsg]       = useState('')
+
   const showMsg = (type, text) => {
     setMsg({ type, text })
     setTimeout(() => setMsg(null), 4000)
@@ -48,9 +62,15 @@ export default function SettingsPage({ onBack }) {
 
   const loadData = useCallback(async () => {
     try {
-      const [settings, stored] = await Promise.all([getSettings(), listStoredFiles()])
+      const [settings, stored, llmCfg, modelsRes] = await Promise.all([
+        getSettings(), listStoredFiles(), getLLMSettings(), listLLMModels(),
+      ])
       setBackupDays(settings.backup_days)
       setFiles(stored)
+      setLlmProvider(llmCfg.llm_provider || 'groq')
+      setLlmApiKey(llmCfg.llm_api_key   || '')
+      setLlmModel(llmCfg.llm_model      || 'llama-3.3-70b-versatile')
+      setLlmModels(modelsRes.models      || [])
     } catch {
       showMsg('err', 'Failed to load data.')
     } finally {
@@ -98,6 +118,52 @@ export default function SettingsPage({ onBack }) {
     }
   }
 
+  async function handleSaveLLM() {
+    setSavingLLM(true)
+    try {
+      await saveLLMSettings({ llm_provider: llmProvider, llm_api_key: llmApiKey, llm_model: llmModel })
+      showMsg('ok', 'LLM settings saved.')
+      setEditingKey(false)
+    } catch {
+      showMsg('err', 'Failed to save LLM settings.')
+    } finally {
+      setSavingLLM(false)
+    }
+  }
+
+  async function handleTestConnection() {
+    setTestingConn(true)
+    setConnStatus(null)
+    try {
+      const res = await testLLMConnection()
+      setConnStatus('ok')
+      setConnMsg(`Connected — model replied: "${res.reply}"`)
+    } catch (e) {
+      setConnStatus('err')
+      setConnMsg(e.response?.data?.detail || 'Connection failed.')
+    } finally {
+      setTestingConn(false)
+    }
+  }
+
+  function startEditKey() {
+    setKeyDraft(llmApiKey)
+    setEditingKey(true)
+    setShowKey(true)
+  }
+
+  function cancelEditKey() {
+    setEditingKey(false)
+    setKeyDraft('')
+    setShowKey(false)
+  }
+
+  function applyKeyDraft() {
+    setLlmApiKey(keyDraft)
+    setEditingKey(false)
+    setShowKey(false)
+  }
+
   async function handleDeleteAll() {
     setDeletingAll(true)
     try {
@@ -136,6 +202,124 @@ export default function SettingsPage({ onBack }) {
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+
+        {/* ── LLM Configuration ─────────────────────────────────────── */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            LLM Configuration
+          </h2>
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-5">
+
+            {/* Provider */}
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-1">Provider</label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-violet-700 font-bold bg-violet-50 border border-violet-200 px-3 py-1.5 rounded-lg">
+                  🤖 Groq
+                </span>
+                <span className="text-xs text-gray-400">Fast inference via GroqCloud API</span>
+              </div>
+            </div>
+
+            {/* API Key Manager */}
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-1">
+                API Key
+                <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer"
+                  className="ml-2 text-xs font-normal text-violet-500 hover:text-violet-700">
+                  Get a key ↗
+                </a>
+              </label>
+
+              {editingKey ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type={showKey ? 'text' : 'password'}
+                      value={keyDraft}
+                      onChange={e => setKeyDraft(e.target.value)}
+                      placeholder="gsk_..."
+                      className="flex-1 text-sm border border-violet-300 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      autoFocus
+                    />
+                    <button onClick={() => setShowKey(v => !v)}
+                      className="px-3 py-2 text-xs border border-gray-300 rounded-lg hover:border-gray-400 text-gray-500">
+                      {showKey ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={applyKeyDraft}
+                      className="bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition-colors">
+                      Apply
+                    </button>
+                    <button onClick={cancelEditKey}
+                      className="border border-gray-300 hover:border-gray-400 text-gray-600 text-xs px-4 py-1.5 rounded-lg transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className={`flex-1 text-sm font-mono px-3 py-2 rounded-lg border
+                    ${llmApiKey ? 'bg-gray-50 border-gray-200 text-gray-700' : 'bg-amber-50 border-amber-200 text-amber-600'}`}>
+                    {llmApiKey
+                      ? (showKey ? llmApiKey : `${llmApiKey.slice(0, 8)}${'•'.repeat(Math.min(20, llmApiKey.length - 12))}${llmApiKey.slice(-4)}`)
+                      : 'No API key saved'}
+                  </span>
+                  {llmApiKey && (
+                    <button onClick={() => setShowKey(v => !v)}
+                      className="px-3 py-2 text-xs border border-gray-300 rounded-lg hover:border-gray-400 text-gray-500">
+                      {showKey ? 'Hide' : 'Show'}
+                    </button>
+                  )}
+                  <button onClick={startEditKey}
+                    className="px-3 py-2 text-xs font-semibold border border-violet-300 text-violet-600 hover:bg-violet-50 rounded-lg transition-colors">
+                    {llmApiKey ? 'Edit' : '+ Add Key'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Model Selector */}
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-1">Model</label>
+              <select
+                value={llmModel}
+                onChange={e => setLlmModel(e.target.value)}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-violet-400"
+              >
+                {(llmModels.length ? llmModels : [{ id: llmModel, name: llmModel, context: '' }]).map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}{m.context ? ` — ${m.context} context` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">
+                Rate limits (free tier): 30 req/min · 6K tokens/min · 1,000 req/day
+              </p>
+            </div>
+
+            {/* Connection test result */}
+            {connStatus && (
+              <div className={`text-xs px-3 py-2 rounded-lg font-medium
+                ${connStatus === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                {connStatus === 'ok' ? '✓ ' : '✗ '}{connMsg}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 flex-wrap pt-1">
+              <button onClick={handleSaveLLM} disabled={savingLLM}
+                className="bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+                {savingLLM ? 'Saving…' : 'Save LLM Settings'}
+              </button>
+              <button onClick={handleTestConnection} disabled={testingConn || !llmApiKey}
+                className="border border-gray-300 hover:border-violet-400 hover:text-violet-700 text-gray-600 text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-40">
+                {testingConn ? 'Testing…' : 'Test Connection'}
+              </button>
+            </div>
+          </div>
+        </section>
 
         {/* ── Storage Settings ──────────────────────────────────────── */}
         <section>
