@@ -25,6 +25,7 @@ from functions_qc.unique_identifier_handler.unique_identifier_check import check
 from functions_qc.facebook_handler.facebook_match                  import verify_facebook_profile_match
 from functions_qc.drop_duplicates_handler.drop_duplicates          import drop_duplicate_rows
 from functions_qc.company_revenue_handler.company_revenue_check    import check_company_revenue
+from functions_qc.city_state_postal_handler.city_state_postal_match import check_city_state_postal
 
 _CONFIG_PATH = Path(__file__).parent.parent / "instructions" / "runner_config.json"
 
@@ -48,6 +49,7 @@ STEP_LABELS = {
     "facebook_match":            "17. Facebook name match",
     "drop_duplicates":           "18. Drop duplicate rows",
     "company_revenue_check":     "19. Company revenue unusual characters",
+    "city_state_postal_match":   "20. City / State / Postal code match",
 }
 
 
@@ -116,8 +118,10 @@ def _build_steps(df, cols, toggles, thresholds):
     lt   = cols.get("link_text")
     desc = cols.get("description")
     uid  = cols.get("unique_identifier")
-    rev  = cols.get("company_revenue")
-    fb   = cols.get("facebook")
+    rev    = cols.get("company_revenue")
+    postal = cols.get("postal_code")
+    ocity  = cols.get("office_city")
+    fb     = cols.get("facebook")
     fb_lt  = cols.get("facebook_link_text")
     fb_desc = cols.get("facebook_description")
     ph   = cols.get("phone_columns", [])
@@ -231,6 +235,11 @@ def _build_steps(df, cols, toggles, thresholds):
         steps.append({"name": "company_revenue_check", "label": STEP_LABELS["company_revenue_check"],
                       "func": check_company_revenue,
                       "kwargs": {"revenue_col": rev}})
+
+    if toggles.get("city_state_postal_match", True) and has(postal, st_, ocity):
+        steps.append({"name": "city_state_postal_match", "label": STEP_LABELS["city_state_postal_match"],
+                      "func": check_city_state_postal,
+                      "kwargs": {"postal_col": postal, "state_col": st_, "city_col": ocity}})
 
     if toggles.get("drop_duplicates", False):
         # Deduplicate on the Unique Identifier column if mapped, else all columns
