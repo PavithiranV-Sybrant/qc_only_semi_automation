@@ -20,6 +20,7 @@ const ROLES = [
   ['facebook',           'Facebook URL'],
   ['facebook_link_text', 'Facebook Link Text 1'],
   ['facebook_description','Facebook Description 1'],
+  ['company_revenue',    'Company Revenue'],
 ]
 
 export default function ColumnMapper({ columns, onMappingChange }) {

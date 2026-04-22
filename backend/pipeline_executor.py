@@ -24,6 +24,7 @@ from functions_qc.link_text_handler.link_text_match                import match_
 from functions_qc.unique_identifier_handler.unique_identifier_check import check_unique_identifier
 from functions_qc.facebook_handler.facebook_match                  import verify_facebook_profile_match
 from functions_qc.drop_duplicates_handler.drop_duplicates          import drop_duplicate_rows
+from functions_qc.company_revenue_handler.company_revenue_check    import check_company_revenue
 
 _CONFIG_PATH = Path(__file__).parent.parent / "instructions" / "runner_config.json"
 
@@ -46,6 +47,7 @@ STEP_LABELS = {
     "unique_identifier_check":   "16. Unique identifier check",
     "facebook_match":            "17. Facebook name match",
     "drop_duplicates":           "18. Drop duplicate rows",
+    "company_revenue_check":     "19. Company revenue unusual characters",
 }
 
 
@@ -114,6 +116,7 @@ def _build_steps(df, cols, toggles, thresholds):
     lt   = cols.get("link_text")
     desc = cols.get("description")
     uid  = cols.get("unique_identifier")
+    rev  = cols.get("company_revenue")
     fb   = cols.get("facebook")
     fb_lt  = cols.get("facebook_link_text")
     fb_desc = cols.get("facebook_description")
@@ -223,6 +226,11 @@ def _build_steps(df, cols, toggles, thresholds):
                                  "facebook_col": fb if (fb and fb in df.columns) else None,
                                  "extra_cols": fb_extra,
                                  "threshold": thresholds.get("facebook_fuzzy", 0.5)}})
+
+    if toggles.get("company_revenue_check", True) and has(rev):
+        steps.append({"name": "company_revenue_check", "label": STEP_LABELS["company_revenue_check"],
+                      "func": check_company_revenue,
+                      "kwargs": {"revenue_col": rev}})
 
     if toggles.get("drop_duplicates", False):
         # Deduplicate on the Unique Identifier column if mapped, else all columns
