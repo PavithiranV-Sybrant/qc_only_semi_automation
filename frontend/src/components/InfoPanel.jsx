@@ -127,6 +127,14 @@ const SECTIONS = [
         needs: "Unique Identifier column",
         creates: "Comments_unique_identifier_verifier (Unique / Duplicate)",
       },
+      {
+        name: "Drop Duplicate Rows",
+        step: "Step 18",
+        defaultOff: true,
+        description: "Removes duplicate rows from the output. If a Unique Identifier column is mapped, duplicates are detected on that column alone (first occurrence kept). Otherwise, rows that are completely identical across all columns are removed. Runs last in the pipeline so all annotation columns are preserved before any row is dropped.",
+        needs: "No required column — uses Unique Identifier column if mapped, otherwise all columns",
+        creates: "No new column — removes rows in-place",
+      },
     ],
   },
   {

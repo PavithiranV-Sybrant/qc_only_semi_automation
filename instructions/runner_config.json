@@ -49,6 +49,7 @@
         "sic_code_naics":            true,
         "link_text_match":           true,
         "unique_identifier_check":   false,
-        "facebook_match":            true
+        "facebook_match":            true,
+        "drop_duplicates":           false
     }
 }
