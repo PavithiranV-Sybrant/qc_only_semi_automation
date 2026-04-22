@@ -15,19 +15,23 @@ def _get_search() -> SearchEngine:
 
 def _format_zip(value) -> str | None:
     """
-    Normalise a postal code cell to a zero-padded 5-digit string.
+    Normalise a postal code cell for uszipcode lookup.
+    Leading zeros are stripped before lookup — uszipcode resolves both
+    "501" and "00501" to the same record internally.
     Handles:
-        "00501"      → "00501"
-        501 (int)    → "00501"
+        "00501"      → "501"
         "90249"      → "90249"
         "90249-1234" → "90249"  (ZIP+4)
+        501 (int)    → "501"
+        "05401"      → "5401"
     """
     if pd.isna(value):
         return None
     digits = re.sub(r"\D", "", str(value))
     if not digits:
         return None
-    return digits[:5].zfill(5)
+    # Strip leading zeros; keep at least "0" if all zeros
+    return digits[:5].lstrip("0") or "0"
 
 
 # ── Main module function ──────────────────────────────────────────────────────
