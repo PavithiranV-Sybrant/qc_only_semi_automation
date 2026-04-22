@@ -2,18 +2,33 @@ import { useState, useEffect, useRef } from 'react'
 import { listTemplates, saveTemplate, deleteTemplate, uploadFile, getConfig } from '../api'
 
 const COLUMN_ROLES = [
-  { key: 'full_name',         label: 'Full Name' },
-  { key: 'first_name',        label: 'First Name' },
-  { key: 'middle_name',       label: 'Middle Name' },
-  { key: 'last_name',         label: 'Last Name' },
-  { key: 'company',           label: 'Company' },
-  { key: 'email',             label: 'Email' },
-  { key: 'office_state',      label: 'Office State' },
-  { key: 'employee_count',    label: 'Employee Count' },
-  { key: 'linkedin',          label: 'LinkedIn' },
-  { key: 'primary_industry',  label: 'Primary Industry' },
-  { key: 'job_title',         label: 'Job Title' },
-  { key: 'sic_code',          label: 'SIC Code' },
+  // ── Name ──────────────────────────────────────────────
+  { key: 'full_name',            label: 'Full Name' },
+  { key: 'first_name',           label: 'First Name' },
+  { key: 'middle_name',          label: 'Middle Name' },
+  { key: 'last_name',            label: 'Last Name' },
+  // ── Company / Contact ─────────────────────────────────
+  { key: 'company',              label: 'Company' },
+  { key: 'email',                label: 'Email' },
+  { key: 'office_state',         label: 'Office State' },
+  { key: 'office_city',          label: 'Office City' },
+  { key: 'postal_code',          label: 'Office Postal Code' },
+  { key: 'employee_count',       label: 'Employee Count' },
+  { key: 'company_revenue',      label: 'Company Revenue' },
+  // ── Industry / Title ──────────────────────────────────
+  { key: 'linkedin',             label: 'LinkedIn' },
+  { key: 'primary_industry',     label: 'Primary Industry' },
+  { key: 'job_title',            label: 'Job Title' },
+  { key: 'sic_code',             label: 'SIC Code' },
+  // ── Link Text & Description ───────────────────────────
+  { key: 'link_text',            label: 'Link Text' },
+  { key: 'description',          label: 'Description' },
+  // ── Facebook ──────────────────────────────────────────
+  { key: 'facebook',             label: 'Facebook URL' },
+  { key: 'facebook_link_text',   label: 'Facebook Link Text 1' },
+  { key: 'facebook_description', label: 'Facebook Description 1' },
+  // ── Identity ──────────────────────────────────────────
+  { key: 'unique_identifier',    label: 'Unique Identifier' },
 ]
 
 const EMPTY_FORM = {
