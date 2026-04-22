@@ -9,3 +9,5 @@ uvicorn
 python-multipart
 rapidfuzz
 groq
+sqlalchemy_mate==1.4.28.4
+uszipcode
