@@ -23,6 +23,7 @@ from functions_qc.sic_code_naics_handler.sic_naics_handler         import proces
 from functions_qc.link_text_handler.link_text_match                import match_link_text_fields
 from functions_qc.unique_identifier_handler.unique_identifier_check import check_unique_identifier
 from functions_qc.facebook_handler.facebook_match                  import verify_facebook_profile_match
+from functions_qc.drop_duplicates_handler.drop_duplicates          import drop_duplicate_rows
 
 _CONFIG_PATH = Path(__file__).parent.parent / "instructions" / "runner_config.json"
 
@@ -44,6 +45,7 @@ STEP_LABELS = {
     "link_text_match":           "15. Link text / Description match",
     "unique_identifier_check":   "16. Unique identifier check",
     "facebook_match":            "17. Facebook name match",
+    "drop_duplicates":           "18. Drop duplicate rows",
 }
 
 
@@ -221,6 +223,13 @@ def _build_steps(df, cols, toggles, thresholds):
                                  "facebook_col": fb if (fb and fb in df.columns) else None,
                                  "extra_cols": fb_extra,
                                  "threshold": thresholds.get("facebook_fuzzy", 0.5)}})
+
+    if toggles.get("drop_duplicates", False):
+        # Deduplicate on the Unique Identifier column if mapped, else all columns
+        subset = [uid] if (uid and uid in df.columns) else None
+        steps.append({"name": "drop_duplicates", "label": STEP_LABELS["drop_duplicates"],
+                      "func": drop_duplicate_rows,
+                      "kwargs": {"subset": subset}})
 
     return steps
 

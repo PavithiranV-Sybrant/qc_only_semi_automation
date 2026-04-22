@@ -109,38 +109,41 @@ Pipeline step toggles, column mappings, and thresholds are in `instructions/runn
 [React frontend :5173]
     ↕ axios (proxied via vite)
 [FastAPI backend :8000]
-    ├── POST /api/upload                         — parse file, store session
-    ├── POST /api/run-pipeline                   — enqueue single-file job, return job_id
-    ├── GET  /api/pipeline-status/{job_id}       — poll progress
-    ├── POST /api/cancel-pipeline/{job_id}       — set cancel flag
-    ├── GET  /api/download/{session_id}          — serve pre-generated Excel
-    ├── POST /api/batch/upload                   — parse multi-file upload, create batch
-    ├── POST /api/batch/run                      — enqueue batch job (files run serially)
-    ├── GET  /api/batch/status/{batch_id}        — poll batch progress
-    ├── POST /api/batch/cancel/{batch_id}        — cancel entire batch
-    ├── POST /api/batch/cancel-file/{batch_id}/{session_id} — cancel one file within batch
-    ├── GET  /api/batch/download/{session_id}    — download one batch file
-    ├── GET  /api/batch/download-all/{batch_id}  — download ZIP of all completed files
-    ├── GET  /api/sessions/{session_id}/columns  — return column names for a session
-    ├── GET  /api/background-jobs                — all single + batch jobs
-    ├── GET  /api/queue                          — global job queue state
-    ├── GET  /api/templates                      — list templates
-    ├── POST /api/templates/{name}               — save template
-    ├── DELETE /api/templates/{name}             — delete template
-    ├── POST /api/final-templates/extract-headers — upload golden .xlsx, return columns + ARGB colors
-    ├── POST /api/final-templates/check          — compare file columns vs final template
-    ├── POST /api/final-templates/normalize      — rearrange/rename/recolor columns, return .xlsx
-    ├── GET  /api/final-templates                — list final output templates
-    ├── GET  /api/final-templates/{name}         — get single final template
-    ├── POST /api/final-templates/{name}         — save final template
-    ├── DELETE /api/final-templates/{name}       — delete final template
-    ├── GET  /api/settings                       — load settings (backup_days)
-    ├── POST /api/settings                       — save settings
-    ├── GET  /api/storage/files                  — list persisted output files
-    ├── DELETE /api/storage/files/{id}           — delete one stored file
-    ├── DELETE /api/storage/files                — delete all stored files
-    ├── POST /api/storage/cleanup                — run retention cleanup manually
-    └── GET  /api/storage/download/{id}          — download a stored output file
+    ├── POST /api/upload                              — parse file, store session
+    ├── POST /api/run-pipeline                        — enqueue single-file job, return job_id
+    ├── GET  /api/pipeline-status/{job_id}            — poll progress
+    ├── POST /api/cancel-pipeline/{job_id}            — set cancel flag
+    ├── GET  /api/download/{session_id}               — serve pre-generated Excel
+    ├── POST /api/batch/upload                        — parse multi-file upload, create batch
+    ├── POST /api/batch/run                           — enqueue batch job (files run serially)
+    ├── GET  /api/batch/status/{batch_id}             — poll batch progress
+    ├── POST /api/batch/cancel/{batch_id}             — cancel entire batch
+    ├── POST /api/batch/cancel-file/{batch_id}/{sid}  — cancel one file within batch
+    ├── GET  /api/batch/download/{session_id}         — download one batch file
+    ├── GET  /api/batch/download-all/{batch_id}       — download ZIP of all completed files
+    ├── GET  /api/sessions/{session_id}/columns       — return column names for a session
+    ├── GET  /api/background-jobs                     — all single + batch jobs
+    ├── GET  /api/queue                               — global job queue state
+    ├── GET  /api/templates                           — list templates
+    ├── POST /api/templates/{name}                    — save template
+    ├── DELETE /api/templates/{name}                  — delete template
+    ├── POST /api/final-templates/extract-headers     — upload golden .xlsx, return columns + ARGB colors
+    ├── POST /api/final-templates/check               — compare file columns vs final template
+    ├── POST /api/final-templates/normalize           — rearrange/rename/recolor columns, return .xlsx
+    ├── GET  /api/final-templates                     — list final output templates
+    ├── GET  /api/final-templates/{name}              — get single final template
+    ├── POST /api/final-templates/{name}              — save final template
+    ├── DELETE /api/final-templates/{name}            — delete final template
+    ├── POST /api/autonomous/analyze                  — LLM-driven column mapping + step selection
+    ├── POST /api/autonomous/test-connection          — verify LLM API key + model
+    ├── GET  /api/autonomous/models                   — list available LLM models for provider
+    ├── GET  /api/settings                            — load settings (backup_days, LLM config)
+    ├── POST /api/settings                            — save settings
+    ├── GET  /api/storage/files                       — list persisted output files
+    ├── DELETE /api/storage/files/{id}               — delete one stored file
+    ├── DELETE /api/storage/files                     — delete all stored files
+    ├── POST /api/storage/cleanup                     — run retention cleanup manually
+    └── GET  /api/storage/download/{id}              — download a stored output file
 ```
 
 ### Job Queue Architecture
@@ -163,6 +166,13 @@ All jobs (single-file and batch) go through a **global sequential queue** (`back
     → frontend polls /api/pipeline-status every 2s
     → Excel cached in session + persisted to data/outputs/
     → user downloads instantly; file available on Settings page
+
+[Autonomous Agent mode]
+    → upload → session stored in session_store
+    → POST /api/autonomous/analyze → llm_client sends headers + sample rows to Groq
+    → returns column_mapping + step_selections with confidence scores + AI reasoning
+    → AutonomousAgent.jsx shows review table with override dropdowns per role
+    → user confirms/overrides → proceeds to standard pipeline run
 
 [Batch mode]
     → upload N files → N sessions created; batch_id returned
@@ -194,12 +204,13 @@ Auto-cleanup runs on startup and every 24 h using the `backup_days` setting.
 | File | Role |
 |---|---|
 | `main.py` | FastAPI app, CORS, router registration; startup cleanup + daily scheduler |
-| `session_store.py` | In-memory dict: UUID → `{df_original, df_working, original_columns, excel_bytes}` |
+| `session_store.py` | In-memory dict: UUID → `{df_original, df_working, original_columns, file_name, excel_bytes}` |
 | `job_store.py` | In-memory dict: UUID → job progress; `list_jobs()`, `dismiss_job()` |
 | `job_queue.py` | Global sequential queue; single daemon worker thread; `enqueue()`, `mark_*()` |
 | `pipeline_executor.py` | Sequential pipeline runner; `execute_pipeline()` with `progress_cb` + `cancel_check` |
 | `file_store.py` | Persist Excel bytes to `data/outputs/`; registry at `data/file_registry.json` |
-| `settings_store.py` | Read/write `data/settings.json`; default `backup_days: 7` |
+| `settings_store.py` | Read/write `data/settings.json`; persists `backup_days`, `llm_provider`, `llm_api_key`, `llm_model` |
+| `llm_client.py` | Groq integration; 6 available models; sends headers + sample rows; rate-limit retry with exponential backoff; returns column_mapping + step_selections with confidence scores |
 | `routers/upload.py` | `POST /api/upload` — 500 MB limit, NaN-safe JSON, data quality stats; `GET /api/sessions/{id}/columns` |
 | `routers/pipeline.py` | Run / status / cancel; enqueues via `job_queue`; pre-generates Excel |
 | `routers/download.py` | `GET /api/download/{session_id}` — serves cached Excel bytes |
@@ -208,6 +219,7 @@ Auto-cleanup runs on startup and every 24 h using the `backup_days` setting.
 | `routers/templates.py` | CRUD for `instructions/templates/*.json` |
 | `routers/storage.py` | List / delete / download stored output files |
 | `routers/final_output_templates.py` | Final Output Template CRUD + `extract-headers` (openpyxl + theme XML) + `check` (3-pass column matching) + `normalize` (reorder/rename/recolor → .xlsx) |
+| `routers/autonomous.py` | `/analyze` (LLM column mapping), `/test-connection`, `/models` endpoints; delegates to `llm_client.py` |
 
 Job status flow: `pending → running → preparing_download → done | error | cancelled`
 
@@ -215,9 +227,9 @@ Job status flow: `pending → running → preparing_download → done | error | 
 
 | File | Role |
 |---|---|
-| `App.jsx` | Mode router: LandingScreen → Single / Batch / Templates / Settings / Background / FinalOutput |
-| `api.js` | All axios calls: upload, pipeline, batch, templates, settings, storage, background, queue, final-templates (`ft*` functions) |
-| `components/LandingScreen.jsx` | Home screen with 5 mode cards + gear icon → Settings |
+| `App.jsx` | Mode router: LandingScreen → Single / Batch / Templates / Settings / Background / FinalOutput / Autonomous |
+| `api.js` | All 40+ axios calls: upload, pipeline, batch, templates, settings, storage, background, queue, autonomous (`analyzeAutonomous`, `testLLMConnection`, `getLLMModels`), final-templates (`ft*`) |
+| `components/LandingScreen.jsx` | Home screen with 6 mode cards + gear icon → Settings |
 | `components/FileUpload.jsx` | Drag & drop; violet progress bar (0–99%); amber parsing spinner (100%) |
 | `components/ColumnMapper.jsx` | Auto-detect template or manual role→column mapping; phone multi-select |
 | `components/PipelineControls.jsx` | Step toggles, threshold sliders, Run button; `hideRunButton` + `onConfigChange` props |
@@ -229,7 +241,8 @@ Job status flow: `pending → running → preparing_download → done | error | 
 | `components/NewJobPanel.jsx` | Slide-in drawer: type selector → file drop → ColumnMapper → PipelineControls → queue |
 | `components/TemplateManager.jsx` | View / create / edit column mapping templates; file drop on new template auto-fills column dropdowns |
 | `components/FinalOutputTemplateManager.jsx` | Output Normalizer — two sub-modes: Create Template (upload golden .xlsx, capture column order + ARGB colors, save) and Check & Arrange (upload file, select template, mapping review table with overrides, normalize & download) |
-| `components/SettingsPage.jsx` | Backup retention slider; stored files list with delete; manual cleanup |
+| `components/AutonomousAgent.jsx` | LLM analysis UI: upload → analyze → confidence score display, AI reasoning per role, override dropdowns, step selection review → hand off to pipeline |
+| `components/SettingsPage.jsx` | Backup retention slider; LLM provider/API key/model configuration; stored files list with delete; manual cleanup |
 | `components/InfoPanel.jsx` | Pipeline documentation overlay |
 
 ### Module Pattern
@@ -244,7 +257,7 @@ Every module in `functions_qc/` follows the same contract:
 
 **Phone column array:** `phone_columns` in `runner_config.json` is an array — the pipeline generates one step-pair (standardize + area code validation) per phone column listed.
 
-### Pipeline Steps (14 total)
+### Pipeline Steps (17 total)
 
 | Key | Step | Default |
 |---|---|---|
@@ -263,6 +276,8 @@ Every module in `functions_qc/` follows the same contract:
 | `job_title_categories` | Categorize: Founder / C-Suite / VP / Director / etc. | ON |
 | `sic_code_naics` | SIC → NAICS mapping | ON |
 | `link_text_match` | Link text / description fuzzy match vs company + contact name (threshold slider, default 85%) | ON |
+| `unique_identifier_check` | Label each row Unique / Duplicate | OFF |
+| `facebook_match` | Fuzzy match name vs Facebook URL slug + link_text1, description1 fields | ON |
 
 ### Functional Domains
 
@@ -277,6 +292,8 @@ Every module in `functions_qc/` follows the same contract:
 | `sic_code_naics_handler/` | SIC → NAICS via `naic_sic_code_mapping/sic_naics_code.json` |
 | `primary_industry/` | Split by `>`, extract 3rd element |
 | `link_text_handler/` | Fuzzy match link text + description fields against company name and contact name (rapidfuzz) |
+| `unique_identifier_handler/` | Mark rows Unique/Duplicate based on composite key |
+| `facebook_handler/` | Fuzzy match name vs Facebook URL slug + extra text fields |
 
 > Note: `email_handling/special_charactors_appeared.py` and `functions_qc/bulk_column_remove/` exist on disk but are not wired into the pipeline.
 
@@ -284,9 +301,10 @@ Every module in `functions_qc/` follows the same contract:
 
 - `data_postal/areaCodes.json` — `"+1 ###"` → US state lookup
 - `naic_sic_code_mapping/sic_naics_code.json` — SIC → NAICS mapping
-- `instructions/runner_config.json` — column name mappings, step toggles, thresholds
+- `instructions/runner_config.json` — column name mappings (21 roles), step toggles, thresholds
 - `instructions/templates/<name>.json` — per-template column overrides: `manta_database.json`, `healthcare.json`
 - `instructions/final_templates/<name>.json` — final output templates: ordered `columns` array with `{name, argb}` per column; ARGB resolved from source file's theme XML
+- `data/settings.json` — runtime settings: `backup_days`, `llm_provider`, `llm_api_key`, `llm_model`
 
 ### String Normalization Convention
 
