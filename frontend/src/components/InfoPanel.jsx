@@ -102,6 +102,13 @@ const SECTIONS = [
         needs: "SIC Code column",
         creates: "naics_code",
       },
+      {
+        name: "Company Revenue Unusual Characters",
+        step: "Step 19",
+        description: "Checks the Company Revenue column for characters outside the expected set. Allowed: digits (0–9), M, B, K (million/billion/thousand), $, >, <, -, space, dot, and comma. Any other character flags the row as TRUE.",
+        needs: "Company Revenue column",
+        creates: "comments_company_revenue_unusual_charactors (True / False)",
+      },
     ],
   },
   {
