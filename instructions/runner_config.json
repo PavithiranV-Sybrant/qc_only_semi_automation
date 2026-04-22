@@ -23,7 +23,9 @@
         "facebook":               "",
         "facebook_link_text":     "",
         "facebook_description":   "",
-        "company_revenue":        ""
+        "company_revenue":        "",
+        "postal_code":            "",
+        "office_city":            ""
     },
 
     "thresholds": {
@@ -52,6 +54,7 @@
         "unique_identifier_check":   false,
         "facebook_match":            true,
         "company_revenue_check":     true,
+        "city_state_postal_match":   true,
         "drop_duplicates":           false
     }
 }

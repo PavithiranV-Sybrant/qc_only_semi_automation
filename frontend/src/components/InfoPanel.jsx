@@ -109,6 +109,13 @@ const SECTIONS = [
         needs: "Company Revenue column",
         creates: "comments_company_revenue_unusual_charactors (True / False)",
       },
+      {
+        name: "City / State / Postal Code Match",
+        step: "Step 20",
+        description: "Looks up the postal code in a US ZIP code database (42,741 entries). Checks whether the Office State and Office City columns both match the database record for that ZIP. Handles ZIP+4 format (e.g. 90249-1234), leading zeros (e.g. 00501), and case differences. Both city and state must match for TRUE.",
+        needs: "Office Postal Code, Office State, Office City",
+        creates: "comments_city_state_match_postal_code (True / False)",
+      },
     ],
   },
   {
