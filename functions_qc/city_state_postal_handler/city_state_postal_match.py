@@ -70,13 +70,26 @@ def check_city_state_postal(
             results.append(False)
             continue
 
-        db_city  = (record.major_city or "").strip().lower()
-        db_state = (record.state      or "").strip().lower()
-
-        row_city  = str(row.get(city_col)  or "").strip().lower()
+        db_state = (record.state or "").strip().lower()
         row_state = str(row.get(state_col) or "").strip().lower()
+        row_city  = str(row.get(city_col)  or "").strip().lower()
 
-        results.append(db_city == row_city and db_state == row_state)
+        # Check against ALL city names for this ZIP (common_city_list covers
+        # cases where the ZIP spans multiple city names, e.g. 33321 covers
+        # both "Fort Lauderdale" and "Tamarac")
+        city_list = record.common_city_list or []
+        if isinstance(city_list, str):
+            import json as _json
+            try:
+                city_list = _json.loads(city_list)
+            except Exception:
+                city_list = [city_list]
+        db_cities = {c.strip().lower() for c in city_list if c}
+        # Always include major_city as a fallback
+        if record.major_city:
+            db_cities.add(record.major_city.strip().lower())
+
+        results.append(db_state == row_state and row_city in db_cities)
 
     # Insert immediately after the postal code column
     idx = df.columns.get_loc(postal_col) + 1
