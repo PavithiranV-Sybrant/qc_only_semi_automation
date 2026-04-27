@@ -13,8 +13,9 @@ def remove_dot_from_names(
             continue
         mask = df[col].notna() & df[col].astype(str).str.contains(".", regex=False)
         updated += int(mask.sum())
+        # Remove dots + apply title case for every non-null string value
         df[col] = df[col].apply(
-            lambda v: str(v).replace(".", "").strip() if pd.notna(v) and isinstance(v, str) else v
+            lambda v: str(v).replace(".", "").strip().title() if pd.notna(v) and isinstance(v, str) else v
         )
     return df, {
         "status": "success",
