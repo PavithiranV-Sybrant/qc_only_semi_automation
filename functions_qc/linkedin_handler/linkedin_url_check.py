@@ -1,7 +1,6 @@
 import re
 import pandas as pd
 
-# Matches linkedin.com/in/<slug> (with optional trailing slash or query params)
 _VALID_PATTERN = re.compile(
     r"^https?://(?:www\.)?linkedin\.com/in/[^/\s?#]+/?(?:[?#].*)?$",
     re.IGNORECASE,
@@ -10,18 +9,20 @@ _VALID_PATTERN = re.compile(
 
 def check_linkedin_url(
     df: pd.DataFrame,
-    linkedin_col: str,
+    linkedin_col: str | None,
 ) -> tuple:
-    if linkedin_col not in df.columns:
-        return df, {"status": "error", "message": f"Column '{linkedin_col}' not found"}
-
     new_col = "comments_linkedin_url_valid_by_in"
+
+    if not linkedin_col or linkedin_col not in df.columns:
+        df[new_col] = "invalid"
+        return df, {"status": "success", "column_created": new_col,
+                    "valid_count": 0, "invalid_count": len(df), "rows_processed": len(df),
+                    "note": "linkedin column not mapped"}
 
     def _validate(val):
         if pd.isna(val) or not str(val).strip():
             return "invalid"
         url = str(val).strip()
-        # If value has no scheme, prepend https:// for matching
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
         return "valid" if _VALID_PATTERN.match(url) else "invalid"

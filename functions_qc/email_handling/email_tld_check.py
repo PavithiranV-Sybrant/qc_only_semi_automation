@@ -1,6 +1,5 @@
 import pandas as pd
 
-# IANA-registered TLDs (comprehensive set covering gTLDs, new gTLDs, and ccTLDs)
 _VALID_TLDS = {
     # Generic
     "com","net","org","edu","gov","mil","int","info","biz","name","pro","aero","coop","museum",
@@ -29,7 +28,7 @@ _VALID_TLDS = {
     "support","systems","tax","taxi","tech","technology","tips","today","tools","tours","trade",
     "training","tv","university","vacations","ventures","video","vision","voyage","watch",
     "website","wiki","works","world","wtf","yoga","zone",
-    # ccTLDs (all 2-letter country codes, selected)
+    # ccTLDs
     "ac","ad","ae","af","ag","ai","al","am","ao","aq","ar","as","at","au","aw","ax","az",
     "ba","bb","bd","be","bf","bg","bh","bi","bj","bm","bn","bo","br","bs","bt","bv","bw",
     "by","bz","ca","cc","cd","cf","cg","ch","ci","ck","cl","cm","cn","co","cr","cu","cv",
@@ -50,12 +49,15 @@ _VALID_TLDS = {
 
 def check_email_tld(
     df: pd.DataFrame,
-    email_column: str,
+    email_column: str | None,
 ) -> tuple:
-    if email_column not in df.columns:
-        return df, {"status": "error", "message": f"Column '{email_column}' not found"}
-
     new_col = "comments_email_valid_tld"
+
+    if not email_column or email_column not in df.columns:
+        df[new_col] = "Not Valid"
+        return df, {"status": "success", "column_created": new_col,
+                    "valid_tld": 0, "invalid_tld": len(df), "rows_processed": len(df),
+                    "note": "email column not mapped"}
 
     def _check(val):
         if pd.isna(val) or not str(val).strip():

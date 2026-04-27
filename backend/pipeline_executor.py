@@ -168,12 +168,12 @@ def _build_steps(df, cols, toggles, thresholds):
                       "func": check_name_non_alphabetic_content,
                       "kwargs": {"first_name_col": fn, "middle_name_col": mn, "last_name_col": ln}})
 
-    if toggles.get("dummy_names_check", True) and has(fn, ln):
+    if toggles.get("dummy_names_check", True):
         steps.append({"name": "dummy_names_check", "label": STEP_LABELS["dummy_names_check"],
                       "func": check_dummy_names,
                       "kwargs": {"first_name_col": fn, "last_name_col": ln}})
 
-    if toggles.get("null_name_check", True) and has(fn, ln):
+    if toggles.get("null_name_check", True):
         steps.append({"name": "null_name_check", "label": STEP_LABELS["null_name_check"],
                       "func": check_null_names,
                       "kwargs": {"first_name_col": fn, "last_name_col": ln}})
@@ -194,22 +194,22 @@ def _build_steps(df, cols, toggles, thresholds):
                                  "email_column": em, "middle_name_column": mn,
                                  "threshold": thresholds.get("name_email_fuzzy", 80)}})
 
-    if toggles.get("email_reuse_check", True) and has(em):
+    if toggles.get("email_reuse_check", True):
         steps.append({"name": "email_reuse_check", "label": STEP_LABELS["email_reuse_check"],
                       "func": check_email_reuse,
                       "kwargs": {"email_column": em}})
 
-    if toggles.get("email_tld_check", True) and has(em):
+    if toggles.get("email_tld_check", True):
         steps.append({"name": "email_tld_check", "label": STEP_LABELS["email_tld_check"],
                       "func": check_email_tld,
                       "kwargs": {"email_column": em}})
 
-    if toggles.get("email_disposable_check", True) and has(em):
+    if toggles.get("email_disposable_check", True):
         steps.append({"name": "email_disposable_check", "label": STEP_LABELS["email_disposable_check"],
                       "func": check_disposable_email,
                       "kwargs": {"email_column": em}})
 
-    if toggles.get("email_role_check", True) and has(em):
+    if toggles.get("email_role_check", True):
         steps.append({"name": "email_role_check", "label": STEP_LABELS["email_role_check"],
                       "func": check_role_email,
                       "kwargs": {"email_column": em}})
@@ -230,12 +230,11 @@ def _build_steps(df, cols, toggles, thresholds):
                                      "office_state_column": st_},
                           "deferred": True})
 
-    if toggles.get("reused_phone_check", True) and ph:
+    if toggles.get("reused_phone_check", True):
         valid_ph = [c for c in (ph if isinstance(ph, list) else [ph]) if c and c in df.columns]
-        if valid_ph:
-            steps.append({"name": "reused_phone_check", "label": STEP_LABELS["reused_phone_check"],
-                          "func": check_reused_phone,
-                          "kwargs": {"phone_columns": valid_ph}})
+        steps.append({"name": "reused_phone_check", "label": STEP_LABELS["reused_phone_check"],
+                      "func": check_reused_phone,
+                      "kwargs": {"phone_columns": valid_ph}})
 
     if toggles.get("normalize_employee_count", True) and has(emp):
         steps.append({"name": "normalize_employee_count", "label": STEP_LABELS["normalize_employee_count"],
@@ -248,7 +247,7 @@ def _build_steps(df, cols, toggles, thresholds):
                                  "last_name_col": ln, "linkedin_col": li,
                                  "threshold": thresholds.get("linkedin_fuzzy", 0.5)}})
 
-    if toggles.get("linkedin_url_check", True) and has(li):
+    if toggles.get("linkedin_url_check", True):
         steps.append({"name": "linkedin_url_check", "label": STEP_LABELS["linkedin_url_check"],
                       "func": check_linkedin_url,
                       "kwargs": {"linkedin_col": li}})
@@ -261,7 +260,7 @@ def _build_steps(df, cols, toggles, thresholds):
         steps.append({"name": "job_title_categories", "label": STEP_LABELS["job_title_categories"],
                       "func": categorize_job_titles, "kwargs": {"job_title_col": jt}})
 
-    if toggles.get("job_title_non_alpha", True) and has(jt):
+    if toggles.get("job_title_non_alpha", True):
         steps.append({"name": "job_title_non_alpha", "label": STEP_LABELS["job_title_non_alpha"],
                       "func": check_job_title_non_alpha,
                       "kwargs": {"job_title_col": jt}})
