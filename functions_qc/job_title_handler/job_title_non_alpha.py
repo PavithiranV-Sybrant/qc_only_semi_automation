@@ -1,7 +1,7 @@
 import re
 import pandas as pd
 
-_ALLOWED = re.compile(r"^[A-Za-z\s\-'\.&/()]+$")
+_ALLOWED = re.compile(r"^[A-Za-z\s\-',\.&/()]+$")
 
 
 def check_job_title_non_alpha(
