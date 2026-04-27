@@ -10,15 +10,24 @@ from functions_qc.name_handling.name_split                         import split_
 from functions_qc.name_handling.dot_remove                         import remove_dot_from_names
 from functions_qc.name_handling.name_company_match                 import check_company_name_direct_match
 from functions_qc.name_handling.non_alpha_name_handle              import check_name_non_alphabetic_content
+from functions_qc.name_handling.dummy_names_check                  import check_dummy_names
+from functions_qc.name_handling.null_name_check                    import check_null_names
 from functions_qc.email_handling.email_structure_validation        import validate_email_structure
 from functions_qc.email_handling.company_email_domain_match        import company_email_domain_match
 from functions_qc.email_handling.name_email_fuzzy                  import name_email_fuzzy_match
+from functions_qc.email_handling.email_reuse_check                 import check_email_reuse
+from functions_qc.email_handling.email_tld_check                   import check_email_tld
+from functions_qc.email_handling.email_disposable_check            import check_disposable_email
+from functions_qc.email_handling.email_role_check                  import check_role_email
 from functions_qc.phone_number_handling.standaize_phone_number     import normalize_phone_excel
 from functions_qc.phone_number_handling.address_phone_postal       import validate_phone_state
+from functions_qc.phone_number_handling.reused_phone_check         import check_reused_phone
 from functions_qc.employee_count_handler.employee_count_normalizer import normalize_employee_count
 from functions_qc.linkedin_handler.name_linkedin_fuzzy_match       import verify_linkedin_profile_match
+from functions_qc.linkedin_handler.linkedin_url_check              import check_linkedin_url
 from functions_qc.primary_industry.primary_industry_split_using_graterthen_greater_then import extract_primary_industry
 from functions_qc.job_title_handler.job_title_categories           import categorize_job_titles
+from functions_qc.job_title_handler.job_title_non_alpha            import check_job_title_non_alpha
 from functions_qc.sic_code_naics_handler.sic_naics_handler         import process_sic_naics
 from functions_qc.link_text_handler.link_text_match                import match_link_text_fields
 from functions_qc.unique_identifier_handler.unique_identifier_check import check_unique_identifier
@@ -31,25 +40,34 @@ _CONFIG_PATH = Path(__file__).parent.parent / "instructions" / "runner_config.js
 
 STEP_LABELS = {
     "name_split":                "0. Split full name into parts",
-    "dot_remove":                "1. Remove dots from names",
+    "dot_remove":                "1. Remove dots + title case names",
     "name_company_match":        "2. Name / Company match",
     "non_alpha_name_handle":     "3. Non-alpha characters in names",
-    "email_structure_validation":"5. Email structure validation",
-    "company_email_domain_match":"6. Company / Email domain match",
-    "name_email_fuzzy_match":    "7. Name / Email fuzzy match",
-    "normalize_phone_excel":     "8. Normalize phone numbers",
-    "validate_phone_state":      "9. Phone / State validation",
-    "normalize_employee_count":  "10. Normalize employee count",
-    "name_linkedin_fuzzy_match": "11. LinkedIn name match",
-    "extract_primary_industry":  "12. Extract primary industry",
-    "job_title_categories":      "13. Job title categorization",
-    "sic_code_naics":            "14. SIC → NAICS mapping",
-    "link_text_match":           "15. Link text / Description match",
-    "unique_identifier_check":   "16. Unique identifier check",
-    "facebook_match":            "17. Facebook name match",
-    "drop_duplicates":           "18. Drop duplicate rows",
-    "company_revenue_check":     "19. Company revenue unusual characters",
-    "city_state_postal_match":   "20. City / State / Postal code match",
+    "dummy_names_check":         "4. Dummy names check",
+    "null_name_check":           "5. Null name check",
+    "email_structure_validation":"6. Email structure validation",
+    "company_email_domain_match":"7. Company / Email domain match",
+    "name_email_fuzzy_match":    "8. Name / Email fuzzy match",
+    "email_reuse_check":         "9. Email reuse check",
+    "email_tld_check":           "10. Email TLD validity check",
+    "email_disposable_check":    "11. Disposable email check",
+    "email_role_check":          "12. Role-based email check",
+    "normalize_phone_excel":     "13. Normalize phone numbers",
+    "validate_phone_state":      "14. Phone / State validation",
+    "reused_phone_check":        "15. Reused phone number check",
+    "normalize_employee_count":  "16. Normalize employee count",
+    "name_linkedin_fuzzy_match": "17. LinkedIn name match",
+    "linkedin_url_check":        "18. LinkedIn URL /in/ validity",
+    "extract_primary_industry":  "19. Extract primary industry",
+    "job_title_categories":      "20. Job title categorization",
+    "job_title_non_alpha":       "21. Job title non-alphabetical check",
+    "sic_code_naics":            "22. SIC → NAICS mapping",
+    "link_text_match":           "23. Link text / Description match",
+    "unique_identifier_check":   "24. Unique identifier check",
+    "facebook_match":            "25. Facebook name match",
+    "drop_duplicates":           "26. Drop duplicate rows",
+    "company_revenue_check":     "27. Company revenue unusual characters",
+    "city_state_postal_match":   "28. City / State / Postal code match",
 }
 
 
@@ -150,6 +168,16 @@ def _build_steps(df, cols, toggles, thresholds):
                       "func": check_name_non_alphabetic_content,
                       "kwargs": {"first_name_col": fn, "middle_name_col": mn, "last_name_col": ln}})
 
+    if toggles.get("dummy_names_check", True) and has(fn, ln):
+        steps.append({"name": "dummy_names_check", "label": STEP_LABELS["dummy_names_check"],
+                      "func": check_dummy_names,
+                      "kwargs": {"first_name_col": fn, "last_name_col": ln}})
+
+    if toggles.get("null_name_check", True) and has(fn, ln):
+        steps.append({"name": "null_name_check", "label": STEP_LABELS["null_name_check"],
+                      "func": check_null_names,
+                      "kwargs": {"first_name_col": fn, "last_name_col": ln}})
+
     if toggles.get("email_structure_validation", True) and has(em):
         steps.append({"name": "email_structure_validation", "label": STEP_LABELS["email_structure_validation"],
                       "func": validate_email_structure, "kwargs": {"email_column": em}})
@@ -165,6 +193,26 @@ def _build_steps(df, cols, toggles, thresholds):
                       "kwargs": {"first_name_column": fn, "last_name_column": ln,
                                  "email_column": em, "middle_name_column": mn,
                                  "threshold": thresholds.get("name_email_fuzzy", 80)}})
+
+    if toggles.get("email_reuse_check", True) and has(em):
+        steps.append({"name": "email_reuse_check", "label": STEP_LABELS["email_reuse_check"],
+                      "func": check_email_reuse,
+                      "kwargs": {"email_column": em}})
+
+    if toggles.get("email_tld_check", True) and has(em):
+        steps.append({"name": "email_tld_check", "label": STEP_LABELS["email_tld_check"],
+                      "func": check_email_tld,
+                      "kwargs": {"email_column": em}})
+
+    if toggles.get("email_disposable_check", True) and has(em):
+        steps.append({"name": "email_disposable_check", "label": STEP_LABELS["email_disposable_check"],
+                      "func": check_disposable_email,
+                      "kwargs": {"email_column": em}})
+
+    if toggles.get("email_role_check", True) and has(em):
+        steps.append({"name": "email_role_check", "label": STEP_LABELS["email_role_check"],
+                      "func": check_role_email,
+                      "kwargs": {"email_column": em}})
 
     for phone_col in (ph if isinstance(ph, list) else [ph]):
         if not phone_col or phone_col not in df.columns:
@@ -182,6 +230,13 @@ def _build_steps(df, cols, toggles, thresholds):
                                      "office_state_column": st_},
                           "deferred": True})
 
+    if toggles.get("reused_phone_check", True) and ph:
+        valid_ph = [c for c in (ph if isinstance(ph, list) else [ph]) if c and c in df.columns]
+        if valid_ph:
+            steps.append({"name": "reused_phone_check", "label": STEP_LABELS["reused_phone_check"],
+                          "func": check_reused_phone,
+                          "kwargs": {"phone_columns": valid_ph}})
+
     if toggles.get("normalize_employee_count", True) and has(emp):
         steps.append({"name": "normalize_employee_count", "label": STEP_LABELS["normalize_employee_count"],
                       "func": normalize_employee_count, "kwargs": {"old_employee_count": emp}})
@@ -193,6 +248,11 @@ def _build_steps(df, cols, toggles, thresholds):
                                  "last_name_col": ln, "linkedin_col": li,
                                  "threshold": thresholds.get("linkedin_fuzzy", 0.5)}})
 
+    if toggles.get("linkedin_url_check", True) and has(li):
+        steps.append({"name": "linkedin_url_check", "label": STEP_LABELS["linkedin_url_check"],
+                      "func": check_linkedin_url,
+                      "kwargs": {"linkedin_col": li}})
+
     if toggles.get("extract_primary_industry", True) and has(pi):
         steps.append({"name": "extract_primary_industry", "label": STEP_LABELS["extract_primary_industry"],
                       "func": extract_primary_industry, "kwargs": {"source_column": pi}})
@@ -200,6 +260,11 @@ def _build_steps(df, cols, toggles, thresholds):
     if toggles.get("job_title_categories", True) and has(jt):
         steps.append({"name": "job_title_categories", "label": STEP_LABELS["job_title_categories"],
                       "func": categorize_job_titles, "kwargs": {"job_title_col": jt}})
+
+    if toggles.get("job_title_non_alpha", True) and has(jt):
+        steps.append({"name": "job_title_non_alpha", "label": STEP_LABELS["job_title_non_alpha"],
+                      "func": check_job_title_non_alpha,
+                      "kwargs": {"job_title_col": jt}})
 
     if toggles.get("sic_code_naics", True) and has(sic):
         steps.append({"name": "sic_code_naics", "label": STEP_LABELS["sic_code_naics"],
