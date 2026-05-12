@@ -1,13 +1,5 @@
 const MODES = [
   {
-    id:    'autonomous',
-    icon:  '🤖',
-    title: 'Fully Autonomous Agent',
-    desc:  'Upload your file and let the AI automatically map columns, select the right QC steps, and run the pipeline — zero manual configuration.',
-    badge: 'AI',
-    highlight: true,
-  },
-  {
     id:    'single',
     icon:  '📄',
     title: 'Single File',
