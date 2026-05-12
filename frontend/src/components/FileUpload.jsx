@@ -1,73 +1,63 @@
 import { useRef, useState } from 'react'
 
-export default function FileUpload({ onUpload, loading, uploadProgress }) {
+export default function FileUpload({ onUpload, loading, uploadProgress, fileInfo, onClear }) {
   const inputRef = useRef()
   const [dragging, setDragging] = useState(false)
 
   function handleFile(file) {
     if (!file) return
     const ext = file.name.split('.').pop().toLowerCase()
-    if (!['xlsx', 'csv'].includes(ext)) {
-      alert('Only .xlsx and .csv files are supported.')
+    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+      alert('Only .xlsx, .xls, .csv files are supported.')
       return
     }
     onUpload(file)
   }
 
-  const showProgress = loading && uploadProgress !== null && uploadProgress !== undefined
+  function onDrop(e) {
+    e.preventDefault()
+    setDragging(false)
+    handleFile(e.dataTransfer.files[0])
+  }
+
+  if (fileInfo) {
+    return (
+      <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex items-start gap-2">
+        <div className="text-violet-500 mt-0.5">📄</div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-violet-800 truncate">{fileInfo.file_name}</p>
+          <p className="text-xs text-violet-500">{fileInfo.total_rows?.toLocaleString()} rows · {fileInfo.total_columns} columns</p>
+        </div>
+        <button onClick={onClear} className="text-violet-400 hover:text-red-500 text-xs shrink-0">✕</button>
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <div
-        className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors
-          ${loading ? 'pointer-events-none opacity-70' : ''}
-          ${dragging ? 'border-violet-500 bg-violet-50' : 'border-gray-300 hover:border-violet-400'}`}
-        onClick={() => !loading && inputRef.current.click()}
-        onDragOver={e => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]) }}
-      >
-        <input ref={inputRef} type="file" accept=".xlsx,.csv" className="hidden"
-          onChange={e => handleFile(e.target.files[0])} />
-        <div className="text-3xl mb-2">📂</div>
-        {loading
-          ? <p className="text-violet-600 text-sm font-medium">Uploading...</p>
-          : <>
-              <p className="font-medium text-gray-700 text-sm">Drop file here or click to browse</p>
-              <p className="text-xs text-gray-400 mt-1">.xlsx or .csv</p>
-            </>
-        }
-      </div>
-
-      {/* Upload progress bar (0–99%) */}
-      {showProgress && uploadProgress < 100 && (
-        <div className="mt-2">
-          <div className="flex justify-between text-xs text-violet-600 mb-1">
-            <span>Uploading file...</span>
-            <span>{uploadProgress}%</span>
-          </div>
-          <div className="h-2 bg-violet-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-violet-600 rounded-full transition-all duration-200"
-              style={{ width: `${uploadProgress}%` }}
-            />
+    <div
+      onClick={() => inputRef.current?.click()}
+      onDragOver={e => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={onDrop}
+      className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all
+        ${dragging ? 'border-violet-500 bg-violet-50' : 'border-gray-200 hover:border-violet-400 hover:bg-violet-50/50'}`}
+    >
+      <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+        onChange={e => handleFile(e.target.files[0])} />
+      {loading ? (
+        <div className="space-y-2">
+          <div className="text-sm text-violet-600 font-medium">Uploading…</div>
+          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-violet-500 rounded-full transition-all"
+              style={{ width: `${uploadProgress || 0}%` }} />
           </div>
         </div>
-      )}
-
-      {/* Parsing state (upload done, server processing) */}
-      {loading && uploadProgress === 100 && (
-        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <div className="flex items-center gap-2 mb-1.5">
-            <div className="w-3.5 h-3.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin shrink-0" />
-            <span className="text-xs font-medium text-amber-700">Parsing file on server...</span>
-          </div>
-          {/* Indeterminate sliding bar */}
-          <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
-            <div className="h-full bg-amber-400 rounded-full w-1/3 animate-[slide_1.2s_ease-in-out_infinite]" />
-          </div>
-          <p className="text-xs text-amber-600 mt-1">Reading data and computing statistics — please wait.</p>
-        </div>
+      ) : (
+        <>
+          <div className="text-3xl mb-2">📁</div>
+          <p className="text-sm font-medium text-gray-600">Drop file here or click to browse</p>
+          <p className="text-xs text-gray-400 mt-1">.xlsx · .xls · .csv</p>
+        </>
       )}
     </div>
   )

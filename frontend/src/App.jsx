@@ -1,361 +1,262 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { uploadFile, startPipeline, pollJobStatus, cancelPipeline } from './api'
-import FileUpload       from './components/FileUpload'
-import ColumnMapper     from './components/ColumnMapper'
-import PipelineControls from './components/PipelineControls'
-import DataPreview      from './components/DataPreview'
-import PipelineResults  from './components/PipelineResults'
-import PipelineAnalysis from './components/PipelineAnalysis'
-import InfoPanel        from './components/InfoPanel'
-import LandingScreen    from './components/LandingScreen'
-import TemplateManager  from './components/TemplateManager'
-import BatchProcessor   from './components/BatchProcessor'
-import SettingsPage     from './components/SettingsPage'
-import BackgroundJobs   from './components/BackgroundJobs'
-import FinalOutputTemplateManager from './components/FinalOutputTemplateManager'
-import AutonomousAgent            from './components/AutonomousAgent'
-import './index.css'
+import { useState, useEffect, useRef } from 'react'
+import { uploadFile, startPipeline, pollStatus, getSettings } from './api'
+import FileUpload from './components/FileUpload'
+import PipelineProgress from './components/PipelineProgress'
+import PipelineResults from './components/PipelineResults'
+import SettingsPage from './components/SettingsPage'
 
 const TABS = [
-  { id: 'preview',  label: '📊 Data Preview' },
-  { id: 'results',  label: '⚙️ Pipeline Results' },
-  { id: 'analysis', label: '🔬 Pipeline Analysis' },
+  { id: 'results', label: '📊 Results' },
+  { id: 'progress', label: '⚙️ Progress' },
 ]
 
 export default function App() {
-  const [currentMode,    setCurrentMode]    = useState(null)   // null | 'single' | 'batch' | 'templates'
+  const [fileInfo, setFileInfo]       = useState(null)
+  const [uploading, setUploading]     = useState(false)
+  const [uploadPct, setUploadPct]     = useState(null)
+  const [jobId, setJobId]             = useState(null)
+  const [job, setJob]                 = useState(null)
+  const [sessionId, setSessionId]     = useState(null)
+  const [error, setError]             = useState(null)
+  const [tab, setTab]                 = useState('results')
+  const [showSettings, setShowSettings] = useState(false)
+  const [hasKey, setHasKey]           = useState(true)
+  const pollRef = useRef(null)
 
-  const [sessionId,      setSessionId]      = useState(null)
-  const [fileInfo,       setFileInfo]       = useState(null)
-  const [previewRows,    setPreviewRows]    = useState([])
-  const [dataQuality,    setDataQuality]    = useState([])
-  const [columnMapping,  setColumnMapping]  = useState(null)
-  const [pipelineData,   setPipelineData]   = useState(null)
-  const [activeTab,      setActiveTab]      = useState('preview')
-  const [uploading,      setUploading]      = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(null)
-  const [largeFile,      setLargeFile]      = useState(false)
-  const [error,          setError]          = useState(null)
-
-  // Job / pipeline progress
-  const [jobId,        setJobId]        = useState(null)
-  const [jobProgress,  setJobProgress]  = useState(null)
-  const [downloadReady, setDownloadReady] = useState(false)
-  const [preparingDl,  setPreparingDl]  = useState(false)
-  const pollRef    = useRef(null)
-
-  // Resizable sidebar (desktop)
-  const [sidebarWidth, setSidebarWidth] = useState(384)
-  const isResizing = useRef(false)
-
-  const onMouseDown = useCallback(() => { isResizing.current = true }, [])
-
+  // Check if API key is configured on load
   useEffect(() => {
-    function onMouseMove(e) {
-      if (!isResizing.current) return
-      const newWidth = Math.min(Math.max(e.clientX, 200), 700)
-      setSidebarWidth(newWidth)
-    }
-    function onMouseUp() { isResizing.current = false }
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
+    getSettings().then(s => {
+      if (!s.has_key) {
+        setHasKey(false)
+        setShowSettings(true)
+      }
+    }).catch(() => {})
   }, [])
 
-  // Responsive: mobile sidebar drawer
-  const [isMobile, setIsMobile]       = useState(() => window.innerWidth < 768)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-
-  // Info panel
-  const [infoOpen, setInfoOpen] = useState(false)
-
-  useEffect(() => {
-    function handleResize() {
-      const mobile = window.innerWidth < 768
-      setIsMobile(mobile)
-      if (!mobile) setSidebarOpen(false)
-    }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
-  // Poll for pipeline status
+  // Poll job status
   useEffect(() => {
     if (!jobId) return
     pollRef.current = setInterval(async () => {
       try {
-        const job = await pollJobStatus(jobId)
-        setJobProgress(job)
-
-        if (job.status === 'preparing_download') {
-          setPreparingDl(true)
-        }
-
-        if (job.status === 'done') {
+        const s = await pollStatus(jobId)
+        setJob(s)
+        if (s.status === 'done') {
           clearInterval(pollRef.current)
-          setJobId(null)
-          setPreparingDl(false)
-          setDownloadReady(true)
-          setPipelineData(job)
-          setActiveTab('results')
-        } else if (job.status === 'error') {
+          setTab('results')
+        } else if (s.status === 'error') {
           clearInterval(pollRef.current)
-          setJobId(null)
-          setPreparingDl(false)
-          setError(job.error || 'Pipeline failed.')
+          setTab('progress')
         }
       } catch {
         clearInterval(pollRef.current)
-        setJobId(null)
         setError('Lost connection to server.')
       }
-    }, 2000)
+    }, 1500)
     return () => clearInterval(pollRef.current)
   }, [jobId])
 
   async function handleUpload(file) {
     setUploading(true)
-    setUploadProgress(0)
+    setUploadPct(0)
     setError(null)
+    setJob(null)
+    setJobId(null)
     try {
-      const data = await uploadFile(file, setUploadProgress)
+      const data = await uploadFile(file, setUploadPct)
+      setFileInfo(data)
       setSessionId(data.session_id)
-      setFileInfo({ file_name: data.file_name, rows: data.rows, columns: data.columns, column_names: data.column_names })
-      setPreviewRows(data.preview_rows)
-      setDataQuality(data.data_quality)
-      setLargeFile(data.large_file || false)
-      setColumnMapping(null)
-      setPipelineData(null)
-      setJobProgress(null)
-      setDownloadReady(false)
-      setActiveTab('preview')
     } catch (e) {
       setError(e.response?.data?.detail || 'Upload failed.')
     } finally {
       setUploading(false)
-      setUploadProgress(null)
+      setUploadPct(null)
     }
   }
 
-  function handleReset() {
-    if (pollRef.current) clearInterval(pollRef.current)
-    setSessionId(null); setFileInfo(null); setPreviewRows([]); setDataQuality([])
-    setColumnMapping(null); setPipelineData(null); setJobProgress(null)
-    setJobId(null); setDownloadReady(false); setPreparingDl(false)
-    setUploading(false); setUploadProgress(null); setLargeFile(false); setError(null)
-    setActiveTab('preview')
-  }
-
-  async function handleCancelPipeline() {
-    if (!jobId) return
-    try {
-      await cancelPipeline(jobId)
-      clearInterval(pollRef.current)
-      setJobId(null)
-      setJobProgress(prev => ({ ...prev, status: 'cancelled', current_step: 'Cancelled by user.' }))
-    } catch {
-      setError('Failed to cancel pipeline.')
-    }
-  }
-
-  async function handleRun(toggles, thresholds) {
-    if (!columnMapping) return
+  async function handleRun() {
+    if (!fileInfo) return
     setError(null)
-    setDownloadReady(false)
-    setJobProgress({ status: 'pending', step_index: 0, total_steps: 0, current_step: 'Starting...' })
+    setJob({ status: 'pending', phase: '', message: 'Queued…', pct: 0 })
+    setTab('progress')
     try {
-      const { job_id } = await startPipeline(sessionId, columnMapping, toggles, thresholds)
+      const { job_id } = await startPipeline(sessionId)
       setJobId(job_id)
     } catch (e) {
-      setJobProgress(null)
-      setError(e.response?.data?.detail || 'Failed to start pipeline.')
+      const msg = e.response?.data?.detail || 'Failed to start pipeline.'
+      setJob(null)
+      setError(msg)
+      if (msg.includes('API key')) setShowSettings(true)
     }
   }
 
-  const isRunning  = !!jobId || ['running', 'pending', 'preparing_download'].includes(jobProgress?.status)
-  const progressPct = jobProgress?.total_steps > 0
-    ? Math.round((jobProgress.step_index / jobProgress.total_steps) * 100)
-    : 0
+  function handleClear() {
+    clearInterval(pollRef.current)
+    setFileInfo(null)
+    setSessionId(null)
+    setJobId(null)
+    setJob(null)
+    setError(null)
+  }
 
-  // ── Mode routing ──────────────────────────────────────────────────────────
-  if (currentMode === null)        return <LandingScreen onSelect={setCurrentMode} />
-  if (currentMode === 'templates') return <TemplateManager onBack={() => setCurrentMode(null)} />
-  if (currentMode === 'batch')     return <BatchProcessor  onBack={() => setCurrentMode(null)} />
-  if (currentMode === 'settings')   return <SettingsPage    onBack={() => setCurrentMode(null)} />
-  if (currentMode === 'background')   return <BackgroundJobs             onBack={() => setCurrentMode(null)} />
-  if (currentMode === 'final-output') return <FinalOutputTemplateManager onBack={() => setCurrentMode(null)} />
-  if (currentMode === 'autonomous')   return <AutonomousAgent            onBack={() => setCurrentMode(null)} />
+  const isRunning = job?.status === 'running' || job?.status === 'pending'
+  const isDone = job?.status === 'done'
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
 
-      {/* Mobile backdrop */}
-      {isMobile && sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setSidebarOpen(false)} />
-      )}
+      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
+      <aside className="w-80 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
 
-      {/* Sidebar */}
-      <aside
-        style={isMobile ? { width: 300 } : { width: sidebarWidth }}
-        className={`bg-white flex flex-col overflow-hidden ${isMobile
-          ? `fixed inset-y-0 left-0 z-50 shadow-2xl transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
-          : 'shrink-0'}`}
-      >
-        <div className="px-4 py-4 border-b border-gray-200 flex items-center gap-2">
-          <button
-            onClick={() => { handleReset(); setCurrentMode(null) }}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-violet-600 transition-colors shrink-0"
-            title="Back to home"
-          >
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
+        {/* Logo */}
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center text-lg">🤖</div>
+            <div>
+              <h1 className="text-sm font-bold text-violet-700">QC Autonomous Agent</h1>
+              <p className="text-xs text-gray-400">Powered by Groq · {' '}
+                <span className="text-violet-400">openai/gpt-oss-120b</span>
+              </p>
+            </div>
+          </div>
+          <button onClick={() => setShowSettings(true)}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+            ⚙️
           </button>
-          <h1 className="text-lg font-bold text-violet-700">Single File</h1>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+
+          {/* No API key warning */}
+          {!hasKey && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-700">
+              ⚠ No API key configured.{' '}
+              <button onClick={() => setShowSettings(true)} className="underline font-semibold">Open Settings</button>
+            </div>
+          )}
+
+          {/* File upload */}
           <section>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Upload File</p>
-            <FileUpload onUpload={handleUpload} loading={uploading} uploadProgress={uploadProgress} />
-            {fileInfo && !uploading && (
-              <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5 flex items-center justify-between">
-                <div className="truncate">
-                  <span className="font-medium text-gray-700">{fileInfo.file_name}</span>
-                  <span className="ml-1">— {fileInfo.rows?.toLocaleString()} rows × {fileInfo.columns} cols</span>
-                </div>
-                <button onClick={handleReset} title="Clear and start over"
-                  className="ml-2 shrink-0 text-gray-400 hover:text-red-500 transition-colors text-base leading-none">
-                  ✕
-                </button>
-              </div>
-            )}
-            {largeFile && (
-              <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                ⚠️ Large file — pipeline may take several minutes. Progress shown live.
-              </div>
-            )}
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Input File</p>
+            <FileUpload
+              onUpload={handleUpload}
+              loading={uploading}
+              uploadProgress={uploadPct}
+              fileInfo={fileInfo}
+              onClear={handleClear}
+            />
           </section>
 
-          {fileInfo && (
-            <section>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Column Mapping</p>
-              <ColumnMapper columns={fileInfo.column_names} onMappingChange={setColumnMapping} />
-              {columnMapping && (
-                <p className="text-xs text-green-600 mt-1">✓ {Object.keys(columnMapping).length} columns mapped</p>
-              )}
+          {/* How it works */}
+          {!fileInfo && (
+            <section className="bg-violet-50 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-bold text-violet-700">How it works</p>
+              {[
+                ['1', 'Upload your Excel or CSV file'],
+                ['2', 'AI detects column roles automatically'],
+                ['3', 'All applicable QC checks run'],
+                ['4', 'Download result with flag columns'],
+              ].map(([n, t]) => (
+                <div key={n} className="flex items-center gap-2 text-xs text-violet-600">
+                  <span className="w-5 h-5 rounded-full bg-violet-200 flex items-center justify-center font-bold text-violet-700 shrink-0">{n}</span>
+                  {t}
+                </div>
+              ))}
             </section>
           )}
 
-          {fileInfo && (
+          {/* Job status while running */}
+          {isRunning && (
             <section>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pipeline</p>
-              <PipelineControls onRun={handleRun} loading={isRunning} mappingApplied={!!columnMapping} />
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Pipeline Status</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-violet-600 font-medium">{job.message}</span>
+                  <span className="text-gray-400">{job.pct}%</span>
+                </div>
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-violet-500 rounded-full transition-all duration-500"
+                    style={{ width: `${job.pct}%` }} />
+                </div>
+              </div>
             </section>
           )}
+
         </div>
 
+        {/* Error */}
         {error && (
-          <div className="mx-4 mb-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-            {error}
+          <div className="mx-5 mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+            ⚠ {error}
           </div>
         )}
+
+        {/* Run button */}
+        <div className="px-5 pb-5 pt-2">
+          <button
+            onClick={handleRun}
+            disabled={!fileInfo || isRunning}
+            className={`w-full py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2
+              ${!fileInfo || isRunning
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-200 active:scale-[0.98]'}`}
+          >
+            {isRunning ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                Analyzing & Running QC…
+              </>
+            ) : (
+              <>▶ Run Autonomous QC</>
+            )}
+          </button>
+          {!fileInfo && (
+            <p className="text-center text-xs text-gray-400 mt-2">Upload a file to get started</p>
+          )}
+        </div>
       </aside>
 
-      {/* Resize handle (desktop only) */}
-      {!isMobile && (
-        <div onMouseDown={onMouseDown}
-          className="w-1 shrink-0 cursor-col-resize bg-gray-200 hover:bg-violet-400 transition-colors active:bg-violet-600" />
-      )}
+      {/* ── Main ────────────────────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col overflow-hidden">
 
-      {/* Main */}
-      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <div className="bg-white border-b border-gray-200 px-3 md:px-6 flex items-center gap-1 h-12 shrink-0 overflow-x-auto">
-          {isMobile && (
-            <button onClick={() => setSidebarOpen(o => !o)}
-              className="mr-2 p-1.5 rounded hover:bg-gray-100 text-gray-600 shrink-0" title="Open sidebar">
-              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16"/>
-              </svg>
-            </button>
-          )}
+        {/* Tab bar */}
+        <div className="bg-white border-b border-gray-200 px-6 flex items-center gap-1 h-12 shrink-0">
           {TABS.map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)} disabled={!fileInfo}
-              className={`px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40 whitespace-nowrap
-                ${activeTab === t.id ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-1.5 rounded text-sm font-semibold transition-colors
+                ${tab === t.id ? 'bg-violet-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
               {t.label}
             </button>
           ))}
-          <div className="ml-auto shrink-0 pl-2">
-            <button onClick={() => setInfoOpen(true)} title="Pipeline documentation"
-              className="w-8 h-8 flex items-center justify-center rounded-full border-2 border-violet-300 text-violet-600 hover:bg-violet-50 hover:border-violet-500 transition-colors font-bold text-sm">
-              i
-            </button>
+          <div className="ml-auto flex items-center gap-2">
+            {isDone && (
+              <span className="text-xs font-bold bg-green-100 text-green-700 px-3 py-1 rounded-full">
+                ✅ {job.quality_score?.toFixed(0)}% Quality · {job.columns_added?.length} columns added
+              </span>
+            )}
+            {isRunning && (
+              <span className="text-xs font-bold bg-violet-100 text-violet-700 px-3 py-1 rounded-full flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 border border-violet-600 border-t-transparent rounded-full animate-spin" />
+                {job.pct}%
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Pipeline progress bar */}
-        {isRunning && jobProgress && (
-          <div className="bg-violet-50 border-b border-violet-100 px-3 md:px-6 py-3">
-            <div className="flex justify-between items-center mb-1.5">
-              <span className="text-xs font-medium text-violet-700">
-                {jobProgress.status === 'preparing_download' ? '📦 Preparing download file...' : `⏳ ${jobProgress.current_step}`}
-              </span>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-violet-500">{jobProgress.step_index} / {jobProgress.total_steps} steps</span>
-                <button onClick={handleCancelPipeline}
-                  className="text-xs bg-red-500 hover:bg-red-600 text-white px-2.5 py-1 rounded transition-colors font-medium">
-                  ✕ Cancel
-                </button>
-              </div>
-            </div>
-            <div className="h-2 bg-violet-100 rounded-full overflow-hidden">
-              <div className="h-full bg-violet-600 rounded-full transition-all duration-500"
-                style={{ width: `${progressPct}%` }} />
-            </div>
-          </div>
-        )}
-
-        {/* Cancelled notice */}
-        {jobProgress?.status === 'cancelled' && (
-          <div className="bg-red-50 border-b border-red-100 px-6 py-2 text-xs text-red-600 flex items-center gap-2">
-            ✕ Pipeline cancelled. You can re-run with different settings or upload a new file.
-          </div>
-        )}
-
-        {/* Pre-download loading bar (shown after pipeline, while Excel is being prepared) */}
-        {preparingDl && !downloadReady && (
-          <div className="bg-green-50 border-b border-green-100 px-6 py-2">
-            <div className="flex items-center gap-2 text-xs text-green-700">
-              <div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
-              <span>Preparing download file in the background — download will be instant when ready.</span>
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-auto p-3 md:p-6">
-          {!fileInfo ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="text-6xl mb-4">🔍</div>
-              <h2 className="text-xl font-semibold text-gray-700 mb-2">QC Automation Pipeline</h2>
-              <p className="text-gray-400 text-sm max-w-sm">
-                Upload an Excel or CSV file in the sidebar, map your columns, configure steps, then run the pipeline.
-              </p>
+        {/* Tab content */}
+        <div className="flex-1 overflow-auto p-6">
+          {tab === 'progress' ? (
+            <div className="max-w-xl mx-auto">
+              <PipelineProgress job={job} />
             </div>
           ) : (
-            <>
-              {activeTab === 'preview'  && <DataPreview fileInfo={fileInfo} previewRows={previewRows} dataQuality={dataQuality} />}
-              {activeTab === 'results'  && <PipelineResults results={pipelineData?.results} elapsed={pipelineData?.elapsed_total} sessionId={sessionId} newColsSummary={pipelineData?.new_cols_summary} downloadReady={downloadReady} />}
-              {activeTab === 'analysis' && <PipelineAnalysis pipelineData={pipelineData} />}
-            </>
+            <PipelineResults job={job} sessionId={sessionId} />
           )}
         </div>
       </main>
 
-      <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} />
+      {showSettings && (
+        <SettingsPage onClose={() => { setShowSettings(false); getSettings().then(s => setHasKey(s.has_key)) }} />
+      )}
     </div>
   )
 }

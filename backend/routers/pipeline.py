@@ -1,164 +1,88 @@
-import io
-import openpyxl
-from openpyxl.styles import PatternFill
+import threading
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Any
 
-from backend.session_store import get_session, update_session
+from backend.session_store import get_session, set_excel_bytes
 from backend.job_store import create_job, get_job, update_job
-from backend.pipeline_executor import execute_pipeline
-from backend.file_store import save_file as _persist_file
-from backend import job_queue
+from backend.settings_store import load_settings
+from backend import llm_client
+from backend.pipeline_runner import run_pipeline, build_excel_bytes
 
-router  = APIRouter()
-_PURPLE = PatternFill(fill_type="solid", fgColor="B19CD9")
+router = APIRouter()
 
 
 class RunRequest(BaseModel):
-    session_id:     str
-    column_mapping: dict[str, Any]
-    step_toggles:   dict[str, bool]
-    thresholds:     dict[str, float]
+    session_id: str
 
 
-def _generate_excel(df, original_cols):
-    """Build Excel bytes with purple headers for new columns."""
-    new_cols = set(df.columns) - set(original_cols)
-    buf = io.BytesIO()
-    wb  = openpyxl.Workbook()
-    ws  = wb.active
-    ws.append(list(df.columns))
-    for cell in ws[1]:
-        if cell.value in new_cols:
-            cell.fill = _PURPLE
-    for row in df.itertuples(index=False, name=None):
-        ws.append([None if (isinstance(v, float) and v != v) else v for v in row])
-    wb.save(buf)
-    return buf.getvalue()
-
-
-def _run_pipeline_task(job_id: str, req: RunRequest):
-    """Runs in a background thread. Updates job store with progress and results."""
+@router.post("/pipeline/run")
+def start_pipeline(req: RunRequest):
     sess = get_session(req.session_id)
     if not sess:
-        update_job(job_id, {"status": "error", "error": "Session not found. Please re-upload the file."})
-        return
+        raise HTTPException(404, "Session not found — please re-upload the file.")
 
-    def progress_cb(step_index, total_steps, label):
-        update_job(job_id, {
-            "status":       "running",
-            "step_index":   step_index,
-            "total_steps":  total_steps,
-            "current_step": label,
-        })
+    settings = load_settings()
+    api_key = settings.get("groq_api_key", "").strip()
+    if not api_key:
+        raise HTTPException(400, "No Groq API key configured. Go to Settings and enter your key.")
 
-    try:
-        def cancel_check():
-            return get_job(job_id).get("cancelled", False)
+    job_id = create_job(req.session_id, sess["file_name"])
 
-        df = sess["df_original"].copy()
-        df_out, results, elapsed = execute_pipeline(
-            df, req.column_mapping, req.step_toggles, req.thresholds,
-            progress_cb=progress_cb,
-            cancel_check=cancel_check,
-        )
-
-        if cancel_check():
-            update_job(job_id, {"status": "cancelled", "current_step": "Cancelled by user."})
-            return
-
-        original_cols = sess["original_columns"]
-        new_cols      = [c for c in df_out.columns if c not in set(original_cols)]
-
-        new_cols_summary = []
-        distributions    = {}
-        for col in new_cols:
-            total     = len(df_out)
-            populated = int(df_out[col].notna().sum())
-            vc        = df_out[col].value_counts(dropna=True)
-            top_val   = str(vc.index[0]) if len(vc) else ""
-            new_cols_summary.append({
-                "column":    col,
-                "populated": populated,
-                "null":      total - populated,
-                "unique":    int(df_out[col].nunique(dropna=True)),
-                "top_value": top_val,
-            })
-            distributions[col] = {str(k): int(v) for k, v in vc.head(20).items()}
-
-        update_session(req.session_id, {"df_working": df_out})
-
-        # Pre-generate Excel so download is instant
-        update_job(job_id, {"status": "preparing_download", "current_step": "Preparing download file..."})
-        excel_bytes = _generate_excel(df_out, original_cols)
-        update_session(req.session_id, {"excel_bytes": excel_bytes})
-
-        # Persist to disk for later re-download; capture storage id for background page
-        storage_file_id = None
+    def _worker():
+        update_job(job_id, status="running", phase="analyze", message="Detecting column roles…", pct=5)
         try:
-            rec = _persist_file(sess.get("file_name", "output.xlsx"), excel_bytes)
-            storage_file_id = rec["id"]
-        except Exception:
-            pass  # storage failure must not abort the pipeline
+            df = sess["df_original"].copy()
+            original_columns = list(df.columns)
+            columns = list(df.columns)
 
-        update_job(job_id, {
-            "status":           "done",
-            "results":          results,
-            "elapsed_total":    elapsed,
-            "new_columns":      new_cols,
-            "new_cols_summary": new_cols_summary,
-            "distributions":    distributions,
-            "rows":             len(df_out),
-            "download_ready":   True,
-            "storage_file_id":  storage_file_id,
-        })
-    except Exception as e:
-        update_job(job_id, {"status": "error", "error": str(e)})
+            # Build sample rows (NaN → None, cast to str)
+            sample_rows = []
+            for _, row in df.head(3).iterrows():
+                sample_rows.append({
+                    col: (None if __import__("pandas").isna(val) else str(val))
+                    for col, val in row.items()
+                })
+
+            update_job(job_id, message=f"Analyzing {len(columns)} columns in batches…", pct=8)
+            role_map = llm_client.analyze_columns_in_batches(api_key, columns, sample_rows)
+            update_job(job_id, role_map=role_map, phase="pipeline", message="Running QC pipeline…", pct=15)
+
+            def progress_cb(msg: str, pct: int):
+                update_job(job_id, message=msg, pct=pct)
+
+            df_result, step_results, cols_added = run_pipeline(df, role_map, progress_cb)
+
+            update_job(job_id, message="Writing Excel output…", pct=93)
+            excel_bytes = build_excel_bytes(df_result, original_columns)
+            set_excel_bytes(req.session_id, excel_bytes)
+
+            # Compute simple quality score
+            total_flag_cols = len(cols_added)
+            flagged_steps = [r for r in step_results if r["status"] == "error"]
+            score = max(0.0, 100.0 - len(flagged_steps) * 5)
+
+            update_job(
+                job_id,
+                status="done",
+                phase="done",
+                message=f"Complete — {total_flag_cols} QC columns added",
+                pct=100,
+                step_results=step_results,
+                columns_added=cols_added,
+                total_rows=len(df_result),
+                quality_score=score,
+            )
+
+        except Exception as e:
+            update_job(job_id, status="error", message=str(e), error=str(e), pct=0)
+
+    threading.Thread(target=_worker, daemon=True, name=f"qc-{job_id[:8]}").start()
+    return {"job_id": job_id}
 
 
-@router.post("/run-pipeline")
-def run_pipeline(req: RunRequest):
-    """Enqueue pipeline job. Returns job_id immediately; runs when worker is free."""
-    sess = get_session(req.session_id)
-    if not sess:
-        raise HTTPException(404, "Session not found. Please re-upload the file.")
-    job_id = create_job(req.session_id, file_name=sess.get("file_name", ""))
-
-    def task():
-        job_queue.mark_running(job_id)
-        try:
-            _run_pipeline_task(job_id, req)
-        finally:
-            final = get_job(job_id)
-            if final:
-                s = final.get("status", "")
-                if s == "error":
-                    job_queue.mark_error(job_id, final.get("error", ""))
-                elif s == "cancelled":
-                    job_queue.mark_cancelled(job_id)
-                else:
-                    job_queue.mark_done(job_id)
-
-    job_queue.enqueue(task, {"id": job_id, "type": "single",
-                              "label": sess.get("file_name", "file")})
-    return {"job_id": job_id, "status": "queued"}
-
-
-@router.get("/pipeline-status/{job_id}")
+@router.get("/pipeline/status/{job_id}")
 def pipeline_status(job_id: str):
-    """Poll this endpoint to get live progress and final results."""
     job = get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found.")
     return job
-
-
-@router.post("/cancel-pipeline/{job_id}")
-def cancel_pipeline(job_id: str):
-    """Signal the running pipeline to stop after the current step."""
-    job = get_job(job_id)
-    if not job:
-        raise HTTPException(404, "Job not found.")
-    update_job(job_id, {"cancelled": True, "status": "cancelled", "current_step": "Cancelling..."})
-    return {"status": "cancelling"}
